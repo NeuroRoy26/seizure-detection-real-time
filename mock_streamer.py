@@ -23,7 +23,7 @@ def generate_sample(
 
 def post_with_retry(url: str, sample: List[float], timeout_s: float) -> Optional[int]:
     try:
-        resp = requests.post(url, json=sample, timeout=timeout_s)
+        resp = requests.post(url, json={"data": sample}, timeout=timeout_s)
         return resp.status_code
     except requests.RequestException as e:
         print(f"[streamer] POST failed: {e}")
