@@ -1,6 +1,7 @@
 import numpy as np
 import time
 import random
+import json
 
 # Define the number of channels and the sampling rate
 num_channels = 23
@@ -40,8 +41,8 @@ for i in range(len(time_array)):
     elif time_array[i] > seizure_counter * 180 + seizure_duration:
         seizure_counter += 1
     
-    # Print the data to the terminal
-    print(data[i, :])
+    # Print the data to the terminal as JSON
+    print(json.dumps({"data": data[i, :].tolist()}))
 
     # Sleep for a short duration to simulate real-time data
     time.sleep(1 / sampling_rate)

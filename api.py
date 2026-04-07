@@ -1,15 +1,19 @@
 from fastapi import FastAPI
+from pydantic import BaseModel
 import numpy as np
 import random
 
 app = FastAPI()
 
+class EEGData(BaseModel):
+    data: list[float]
+
 latest_data = None
 
 @app.post("/ingest")
-async def ingest(data: list):
+async def ingest(data: EEGData):
     global latest_data
-    latest_data = np.array(data)
+    latest_data = np.array(data.data)
     return {"message": "Data ingested successfully"}
 
 @app.get("/latest")
