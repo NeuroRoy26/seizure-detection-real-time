@@ -1,5 +1,4 @@
 fastapi
 uvicorn
-streamlit
-matplotlib
+python-multipart-0.0.24
 requests
