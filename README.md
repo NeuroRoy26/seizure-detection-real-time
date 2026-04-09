@@ -255,7 +255,7 @@ If you see warnings about too many Matplotlib figures, the dashboard should be c
 
 ## Where this is headed (next milestones)
 
-The long-term target (from your project spec) is:
+The long-term target is:
 
 - **Real dataset**: CHB-MIT Scalp EEG Database (PhysioNet)
 - **Model**: train a CNN/LSTM (or other deep model) for seizure detection
