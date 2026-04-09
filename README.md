@@ -87,6 +87,9 @@ uvicorn api:app --reload
 FastAPI will run at `http://127.0.0.1:8000`.
 
 - Interactive docs: `http://127.0.0.1:8000/docs`
+- What you should see:
+  - Terminal logs showing `Uvicorn running on http://127.0.0.1:8000`
+  - If you visit `/latest` before streaming starts, you’ll get `{"message":"No data available"}`
 
 ### 2) Start the mock streamer (Terminal B)
 
@@ -99,6 +102,8 @@ You should see periodic status lines like:
 
 - `status=200` (good)
 - `seizure=True/False` depending on whether the anomaly window is active
+- What you should see in the **FastAPI terminal**:
+  - Repeated requests like `POST /ingest ... 200 OK`
 
 Useful flags:
 
@@ -115,6 +120,73 @@ streamlit run dashboard.py
 
 Then open the local URL Streamlit prints (commonly `http://localhost:8501`) and press **Start**.
 
+- What you should see:
+  - The Streamlit page shows **Status: Connected** once it can reach the backend
+  - The EEG chart updates as samples are ingested
+  - The probability chart updates (currently random, 0–1)
+
+---
+
+## Run with Docker (backend + frontend together)
+
+This repo includes a `Dockerfile` and `docker-compose.yml` to run **FastAPI** + **Streamlit** together.
+
+### 1) Build images
+
+From the repo root:
+
+```bash
+docker compose build
+```
+
+What you should see:
+- Docker building an image that installs `requirements.txt`
+
+### 2) Start the services
+
+```bash
+docker compose up
+```
+
+Or detached:
+
+```bash
+docker compose up -d
+```
+
+What you should see:
+- Backend listening on `0.0.0.0:8000`
+- Frontend (Streamlit) listening on `0.0.0.0:8501`
+
+Open:
+- Streamlit: `http://localhost:8501`
+- FastAPI docs: `http://localhost:8000/docs`
+
+### 3) Start the streamer (still needed)
+
+The compose file runs the backend + dashboard. To generate “live” data, run the streamer separately on your host:
+
+```bash
+source venv/bin/activate
+python mock_streamer.py
+```
+
+What you should see:
+- Streamer logs show `status=200`
+- The Streamlit dashboard starts plotting live updates after you press **Start**
+
+### 4) Stop everything
+
+```bash
+docker compose down
+```
+
+Tip: If you used `-d`, view logs with:
+
+```bash
+docker compose logs -f
+```
+
 ---
 
 ## Quick verification with curl
@@ -125,6 +197,10 @@ Then open the local URL Streamlit prints (commonly `http://localhost:8501`) and 
 curl -i http://127.0.0.1:8000/latest
 ```
 
+What you should see:
+- HTTP `200 OK`
+- Either `{"message":"No data available"}` (before ingest) or `{"data":[...],"seizure_probability":...}`
+
 ### Manually ingest a sample (should return 200)
 
 ```bash
@@ -133,11 +209,20 @@ curl -i -X POST http://127.0.0.1:8000/ingest \
   -d '{"data":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22]}'
 ```
 
+What you should see:
+- HTTP `200 OK`
+- Response: `{"message":"Data ingested successfully"}`
+
 ### Fetch the latest sample (should now include `data` and `seizure_probability`)
 
 ```bash
 curl -s http://127.0.0.1:8000/latest
 ```
+
+What you should see:
+- A JSON object with:
+  - `data`: list of floats
+  - `seizure_probability`: float in `[0,1]`
 
 ---
 

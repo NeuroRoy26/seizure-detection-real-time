@@ -1,9 +1,10 @@
 import streamlit as st
 import requests
 import time
+import os
 import matplotlib.pyplot as plt
 
-API_URL_DEFAULT = "http://127.0.0.1:8000/latest"
+API_URL_DEFAULT = os.environ.get("API_URL", "http://127.0.0.1:8000/latest")
 CHANNELS = 23
 
 
