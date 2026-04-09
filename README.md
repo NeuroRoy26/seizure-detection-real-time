@@ -267,7 +267,7 @@ The long-term target is:
   - Deployment to a free tier (Render/AWS free tier)
   - Streamlit dashboard for live visualization
 
-When you’re ready for the next step, the most natural progression is:
+Immediate TO-DO:
 
 - Replace the random probability in `api.py` with a real inference function.
 - Add a “windowed” inference approach (e.g., model expects \(N \times 23\) samples rather than a single sample).
