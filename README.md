@@ -6,7 +6,12 @@ This repo is building toward a real-time seizure detection demo:
 - **Mock EEG streamer** that simulates **23-channel** EEG with occasional large anomalies (“mock seizures”) and POSTs samples to the API.
 - **Streamlit dashboard** that polls the API and plots the live EEG and seizure probability in near real-time.
 
-Right now, the “model” is a placeholder (random probability). The engineering scaffolding (ingest → serve → visualize) is in place.
+This repo now supports a full **end-to-end** pipeline where you:
+
+- train in **Colab** (PyTorch),
+- export the trained model to **ONNX** (`latest.onnx`),
+- upload to **Google Cloud Storage (GCS)** at a stable path,
+- run the app locally (or in Docker) while the backend auto-fetches the model via a **public URL**.
 
 ---
 
@@ -14,7 +19,7 @@ Right now, the “model” is a placeholder (random probability). The engineerin
 
 - `api.py`
   - `POST /ingest`: receives one EEG sample (23 floats)
-  - `GET /latest`: returns the latest ingested sample + a random `seizure_probability`
+  - `GET /latest`: returns the latest ingested sample + a `seizure_probability`
 - `mock_streamer.py`
   - Generates a 23-channel sine-based signal
   - Every `--seizure-every` seconds, injects an anomaly for `--seizure-duration` seconds
@@ -25,6 +30,8 @@ Right now, the “model” is a placeholder (random probability). The engineerin
   - Rolling buffer window and plots
 - `requirements.txt`
   - Python dependencies (FastAPI, Uvicorn, Streamlit, etc.)
+- `export_and_upload_onnx.py`
+  - Optional local helper to export `GLOBAL_eeg_model_TOP10.pt` → `latest.onnx` and upload to GCS
 
 ---
 
@@ -73,7 +80,7 @@ pip install -r requirements.txt
 
 ---
 
-## Run the system (3 terminals)
+## Run the system (3 terminals, local)
 
 You’ll typically run **FastAPI**, the **streamer**, and the **dashboard** at the same time.
 
@@ -81,7 +88,7 @@ You’ll typically run **FastAPI**, the **streamer**, and the **dashboard** at t
 
 ```bash
 source venv/bin/activate
-uvicorn api:app --reload
+python3 -m uvicorn api:app --reload
 ```
 
 FastAPI will run at `http://127.0.0.1:8000`.
@@ -108,7 +115,7 @@ You should see periodic status lines like:
 Useful flags:
 
 ```bash
-python mock_streamer.py --hz 100 --seizure-every 60 --seizure-duration 5
+python mock_streamer.py --hz 128 --seizure-every 60 --seizure-duration 5
 ```
 
 ### 3) Start the Streamlit dashboard (Terminal C)
@@ -253,6 +260,111 @@ If you see warnings about too many Matplotlib figures, the dashboard should be c
 
 ---
 
+## Model deployment (step-by-step)
+
+This is the workflow that makes the portfolio demo “always run”.
+
+### Step 0: Know what the backend expects
+
+- **Model format**: ONNX (`latest.onnx`)
+- **Model input shape**: `(1, 10, 256)` where:
+  - `10` = “best channels” from your notebook: `[0, 1, 5, 2, 13, 18, 14, 8, 19, 16]`
+  - `256` = 2 seconds @ 128Hz
+- **Streaming sample rate**: set streamer to `--hz 128` so the backend accumulates one 2s window in ~2 seconds.
+
+### Step 1: Export ONNX in Colab
+
+Open `Seizure_Detection.ipynb` and run the cells that:
+
+- train and save your weights to Drive (your notebook saves `GLOBAL_eeg_model_TOP10.pt`)
+- **export to ONNX** (the notebook now writes):
+  - `/content/drive/MyDrive/EEG_Seizure_Project/latest.onnx`
+
+### Step 2: Upload ONNX to GCS (stable path)
+
+In the notebook, run the auth cell (`auth.authenticate_user()`), then run the upload cell that writes to:
+
+- `gs://YOUR_BUCKET/models/latest.onnx`
+
+This stable path is important: every retrain/upload overwrites the same object, so your app can keep using the same URL.
+
+### Step 3: Make the model public (read-only)
+
+You have two ways:
+
+- **Bucket-level public read** (simple for portfolios):
+
+```bash
+gcloud storage buckets add-iam-policy-binding gs://YOUR_BUCKET \
+  --member=allUsers \
+  --role=roles/storage.objectViewer
+```
+
+- **Object-level ACL** (may be blocked if Public Access Prevention is enabled on the bucket).
+
+### Step 4: Get the public URL
+
+For a bucket `YOUR_BUCKET` and object `models/latest.onnx`, the public URL is:
+
+- `https://storage.googleapis.com/YOUR_BUCKET/models/latest.onnx`
+
+### Step 5: Point the backend at the model URL
+
+Run the backend with:
+
+```bash
+export MODEL_URL="https://storage.googleapis.com/YOUR_BUCKET/models/latest.onnx"
+export MODEL_REFRESH_SECONDS="0"   # only download at startup (simple)
+python3 -m uvicorn api:app --reload
+```
+
+Optional: set `MODEL_REFRESH_SECONDS="300"` (5 min) if you want periodic refresh.
+
+### Step 6: Run streamer + dashboard
+
+Streamer:
+
+```bash
+python3 mock_streamer.py --hz 128
+```
+
+Dashboard:
+
+```bash
+streamlit run dashboard.py
+```
+
+### Step 7: Verify the model is actually in GCS (avoids NoSuchKey)
+
+If you get:
+
+```xml
+<Code>NoSuchKey</Code>
+```
+
+it means the object path doesn’t exist (upload didn’t happen or went to a different path).
+
+Check:
+
+```bash
+gcloud storage ls gs://YOUR_BUCKET/models/
+```
+
+You must see `latest.onnx` there.
+
+### Step 8: Verify it’s public (avoids 403)
+
+Open the URL in an incognito window or run:
+
+```bash
+curl -I "https://storage.googleapis.com/YOUR_BUCKET/models/latest.onnx"
+```
+
+- `200` = good
+- `403` = object exists but is not public (bucket policy / public access prevention)
+
+---
+
 ## Where this is headed (next milestones)
 
 The long-term target is:
@@ -313,4 +425,19 @@ Notes:
 - The backend does **real inference** once it has accumulated a full rolling window (\(2s\) at \(128Hz\) = \(256\) samples) and the ONNX model is loaded.
 - Until the buffer is full (or if the model isn’t configured), `seizure_probability` returns `0.0` so the dashboard keeps working.
 - The local cache folder is tracked via `artifacts/.gitkeep` but the weights themselves should not be committed.
+
+### Local (non-Colab) export + upload helper
+
+If you want a local script version of the “export to ONNX + upload to GCS” step, use `export_and_upload_onnx.py`.
+
+Example:
+
+```bash
+python3 export_and_upload_onnx.py \
+  --pt GLOBAL_eeg_model_TOP10.pt \
+  --onnx latest.onnx \
+  --bucket YOUR_BUCKET \
+  --object models/latest.onnx \
+  --make-public
+```
 
