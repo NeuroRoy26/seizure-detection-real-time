@@ -34,7 +34,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Mock 23-channel EEG streamer -> FastAPI /ingest")
     parser.add_argument("--url", default="http://127.0.0.1:8000/ingest", help="FastAPI ingest URL")
     parser.add_argument("--channels", type=int, default=23, help="Number of EEG channels")
-    parser.add_argument("--hz", type=float, default=100.0, help="Samples per second to send")
+    # Default to 128Hz to match the model training pipeline (2s window -> 256 samples).
+    parser.add_argument("--hz", type=float, default=128.0, help="Samples per second to send")
     parser.add_argument("--frequency", type=float, default=10.0, help="Sine frequency (Hz)")
     parser.add_argument("--amplitude", type=float, default=1.0, help="Baseline amplitude")
     parser.add_argument("--seizure-every", type=float, default=180.0, help="Seconds between mock seizures")

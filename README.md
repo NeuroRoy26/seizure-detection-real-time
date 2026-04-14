@@ -283,15 +283,19 @@ For deployment portability (and to avoid huge `torch` installs), the backend is 
 
 ### Recommended approach (simple + reliable): Public GCS URL
 
-1) In Colab, upload your model to a stable object path:
+1) In Colab, export your trained PyTorch model to ONNX (stable input shape: `1 x 10 x 256`), producing:
+
+- `/content/drive/MyDrive/EEG_Seizure_Project/latest.onnx`
+
+2) Upload your model to a stable object path:
 
 ```bash
 gcloud storage cp "/content/drive/MyDrive/EEG_Seizure_Project/latest.onnx" "gs://YOUR_BUCKET/models/latest.onnx"
 ```
 
-2) Make the object publicly readable (read-only).
+3) Make the object publicly readable (read-only).
 
-3) Run the backend with:
+4) Run the backend with:
 
 - `MODEL_URL`: public URL, e.g. `https://storage.googleapis.com/YOUR_BUCKET/models/latest.onnx`
 - `MODEL_LOCAL_PATH`: where to cache locally (default: `artifacts/model.onnx`)
@@ -306,7 +310,7 @@ uvicorn api:app --reload
 ```
 
 Notes:
-- The backend now does **real inference** once it has accumulated a full rolling window (\(2s\) at \(128Hz\) = \(256\) samples) and the model is loaded.
-- Until the buffer is full (or if the model isn’t configured), `seizure_probability` returns `0.0`.
+- The backend does **real inference** once it has accumulated a full rolling window (\(2s\) at \(128Hz\) = \(256\) samples) and the ONNX model is loaded.
+- Until the buffer is full (or if the model isn’t configured), `seizure_probability` returns `0.0` so the dashboard keeps working.
 - The local cache folder is tracked via `artifacts/.gitkeep` but the weights themselves should not be committed.
 
