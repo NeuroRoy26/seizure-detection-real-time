@@ -275,35 +275,38 @@ Immediate TO-DO:
 
 ---
 
-## Model weights: auto-fetch `latest.h5` (portfolio-friendly)
+## Model weights: auto-fetch `latest.onnx` (portfolio-friendly)
 
-This repo now supports an **end-to-end** workflow where you keep training in Colab and your running app can **auto-fetch** the newest `.h5` weights.
+This repo now supports an **end-to-end** workflow where you keep training in Colab and your running app can **auto-fetch** the newest model artifact.
+
+For deployment portability (and to avoid huge `torch` installs), the backend is set up to run **ONNX** with `onnxruntime` (CPU).
 
 ### Recommended approach (simple + reliable): Public GCS URL
 
 1) In Colab, upload your model to a stable object path:
 
 ```bash
-gcloud storage cp "/content/drive/MyDrive/models/latest.h5" "gs://YOUR_BUCKET/models/latest.h5"
+gcloud storage cp "/content/drive/MyDrive/EEG_Seizure_Project/latest.onnx" "gs://YOUR_BUCKET/models/latest.onnx"
 ```
 
 2) Make the object publicly readable (read-only).
 
 3) Run the backend with:
 
-- `MODEL_URL`: public URL, e.g. `https://storage.googleapis.com/YOUR_BUCKET/models/latest.h5`
-- `MODEL_LOCAL_PATH`: where to cache locally (default: `artifacts/model.h5`)
+- `MODEL_URL`: public URL, e.g. `https://storage.googleapis.com/YOUR_BUCKET/models/latest.onnx`
+- `MODEL_LOCAL_PATH`: where to cache locally (default: `artifacts/model.onnx`)
 - `MODEL_REFRESH_SECONDS`: optional periodic refresh interval (default: `0` = only at startup)
 
 Example:
 
 ```bash
-export MODEL_URL="https://storage.googleapis.com/YOUR_BUCKET/models/latest.h5"
+export MODEL_URL="https://storage.googleapis.com/YOUR_BUCKET/models/latest.onnx"
 export MODEL_REFRESH_SECONDS="300"
 uvicorn api:app --reload
 ```
 
 Notes:
-- The backend currently still returns a **random** seizure probability; this change only adds the **weights file fetch/cache pipeline** so the next step is plugging in your real inference.
+- The backend now does **real inference** once it has accumulated a full rolling window (\(2s\) at \(128Hz\) = \(256\) samples) and the model is loaded.
+- Until the buffer is full (or if the model isn’t configured), `seizure_probability` returns `0.0`.
 - The local cache folder is tracked via `artifacts/.gitkeep` but the weights themselves should not be committed.
 
