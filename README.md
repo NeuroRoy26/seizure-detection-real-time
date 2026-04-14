@@ -273,3 +273,37 @@ Immediate TO-DO:
 - Add a “windowed” inference approach (e.g., model expects \(N \times 23\) samples rather than a single sample).
 - Introduce DVC and a `data/` pipeline for dataset download + preprocessing.
 
+---
+
+## Model weights: auto-fetch `latest.h5` (portfolio-friendly)
+
+This repo now supports an **end-to-end** workflow where you keep training in Colab and your running app can **auto-fetch** the newest `.h5` weights.
+
+### Recommended approach (simple + reliable): Public GCS URL
+
+1) In Colab, upload your model to a stable object path:
+
+```bash
+gcloud storage cp "/content/drive/MyDrive/models/latest.h5" "gs://YOUR_BUCKET/models/latest.h5"
+```
+
+2) Make the object publicly readable (read-only).
+
+3) Run the backend with:
+
+- `MODEL_URL`: public URL, e.g. `https://storage.googleapis.com/YOUR_BUCKET/models/latest.h5`
+- `MODEL_LOCAL_PATH`: where to cache locally (default: `artifacts/model.h5`)
+- `MODEL_REFRESH_SECONDS`: optional periodic refresh interval (default: `0` = only at startup)
+
+Example:
+
+```bash
+export MODEL_URL="https://storage.googleapis.com/YOUR_BUCKET/models/latest.h5"
+export MODEL_REFRESH_SECONDS="300"
+uvicorn api:app --reload
+```
+
+Notes:
+- The backend currently still returns a **random** seizure probability; this change only adds the **weights file fetch/cache pipeline** so the next step is plugging in your real inference.
+- The local cache folder is tracked via `artifacts/.gitkeep` but the weights themselves should not be committed.
+

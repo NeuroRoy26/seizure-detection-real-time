@@ -4,6 +4,11 @@ services:
     command: uvicorn api:app --host 0.0.0.0 --port 8000
     ports:
       - "8000:8000"
+    environment:
+      # Optional: point to a public model file (e.g. GCS public URL) and cache it in the container.
+      # - MODEL_URL=https://storage.googleapis.com/YOUR_BUCKET/models/latest.h5
+      - MODEL_LOCAL_PATH=artifacts/model.h5
+      - MODEL_REFRESH_SECONDS=0
 
   frontend:
     build: .
