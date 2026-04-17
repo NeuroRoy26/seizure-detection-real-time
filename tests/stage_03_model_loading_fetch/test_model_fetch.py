@@ -35,14 +35,14 @@ def test_download_skips_when_fingerprint_matches(monkeypatch, tmp_path):
     out_file = tmp_path / "model.onnx"
     out_file.write_bytes(b"existing")
 
+    def _unexpected_get(*args, **kwargs):
+        raise AssertionError("GET should not be called")
+
     monkeypatch.setattr(
         "model_fetch.requests.head",
         lambda *args, **kwargs: FakeHeadResponse({"ETag": "same-etag"}),
     )
-    monkeypatch.setattr(
-        "model_fetch.requests.get",
-        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("GET should not be called")),
-    )
+    monkeypatch.setattr("model_fetch.requests.get", _unexpected_get)
 
     did_download, fingerprint = download_if_needed(
         url="https://example.test/model.onnx",

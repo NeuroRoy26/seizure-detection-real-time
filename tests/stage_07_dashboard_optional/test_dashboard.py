@@ -2,6 +2,8 @@ import importlib
 import sys
 from types import SimpleNamespace
 
+CHANNEL_COUNT = 23
+
 
 class _Ctx:
     def __enter__(self):
@@ -57,7 +59,7 @@ def test_fetch_latest_returns_json(monkeypatch):
             return None
 
         def json(self):
-            return {"data": [1.0] * 23, "seizure_probability": 0.2}
+            return {"data": [1.0] * CHANNEL_COUNT, "seizure_probability": 0.2}
 
     monkeypatch.setattr(dashboard.requests, "get", lambda *args, **kwargs: FakeResponse())
     payload = dashboard._fetch_latest("http://example.test/latest", timeout_s=1.0)

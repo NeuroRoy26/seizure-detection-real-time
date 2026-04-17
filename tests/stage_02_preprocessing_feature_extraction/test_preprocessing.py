@@ -27,7 +27,7 @@ def test_predict_builds_expected_model_input(api_module, eeg_window_256x23):
     assert prob == pytest.approx(expected, rel=1e-5)
 
     model_input = fake_session.last_feed["eeg"]
-    assert model_input.shape == (1, 10, api_module.WINDOW_SAMPLES)
+    assert model_input.shape == (1, len(api_module.BEST_CHANNELS), api_module.WINDOW_SAMPLES)
 
 
 def test_predict_returns_none_when_not_enough_channels(api_module):

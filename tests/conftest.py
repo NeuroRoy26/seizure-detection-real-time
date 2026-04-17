@@ -9,6 +9,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+TEST_SFREQ_HZ = "128"
+TEST_WINDOW_SECONDS = "2"
+TEST_INCOMING_CHANNELS = "23"
+TEST_STANDARDIZE_CHANNELS = "20"
+
 
 @pytest.fixture
 def eeg_sample_23():
@@ -33,10 +38,10 @@ def api_module(monkeypatch, tmp_path):
     monkeypatch.setenv("MODEL_LOCAL_PATH", str(tmp_path / "model.onnx"))
     monkeypatch.setenv("MODEL_REFRESH_SECONDS", "0")
     monkeypatch.setenv("MODEL_HTTP_TIMEOUT_S", "1")
-    monkeypatch.setenv("SFREQ_HZ", "128")
-    monkeypatch.setenv("WINDOW_SECONDS", "2")
-    monkeypatch.setenv("INCOMING_CHANNELS", "23")
-    monkeypatch.setenv("STANDARDIZE_CHANNELS", "20")
+    monkeypatch.setenv("SFREQ_HZ", TEST_SFREQ_HZ)
+    monkeypatch.setenv("WINDOW_SECONDS", TEST_WINDOW_SECONDS)
+    monkeypatch.setenv("INCOMING_CHANNELS", TEST_INCOMING_CHANNELS)
+    monkeypatch.setenv("STANDARDIZE_CHANNELS", TEST_STANDARDIZE_CHANNELS)
 
     import api
 
