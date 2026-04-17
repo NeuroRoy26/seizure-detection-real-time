@@ -42,7 +42,7 @@ def _fake_streamlit():
     return st
 
 
-def test_trim_buffer_keeps_only_last_n(monkeypatch):
+def test_trim_buffer_keeps_only_last_max_len(monkeypatch):
     monkeypatch.setitem(sys.modules, "streamlit", _fake_streamlit())
     dashboard = importlib.import_module("dashboard")
     dashboard.st.session_state.buffer = [{"v": i} for i in range(5)]
