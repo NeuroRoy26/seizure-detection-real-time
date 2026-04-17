@@ -25,5 +25,6 @@ def test_ingest_then_latest_returns_payload_and_probability(api_module, eeg_payl
 
 def test_ingest_rejects_invalid_payload(api_module):
     client = TestClient(api_module.app)
-    response = client.post("/ingest", json=[1, 2, 3])
+    invalid_payload = [1, 2, 3]
+    response = client.post("/ingest", json=invalid_payload)
     assert response.status_code == 422
