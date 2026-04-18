@@ -68,6 +68,17 @@ or:
 
 ---
 
+## Run tests
+
+```bash
+pip install -r requirements.txt -r requirements-dev.txt
+pytest
+```
+
+Tests are organized under `tests/` by pipeline stage (`stage_01_*` through `stage_07_*`).
+
+---
+
 ## Setup
 
 Create and activate a virtual environment, then install dependencies.
@@ -440,4 +451,3 @@ python3 export_and_upload_onnx.py \
   --object models/latest.onnx \
   --make-public
 ```
-
