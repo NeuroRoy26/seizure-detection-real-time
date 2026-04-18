@@ -3,3 +3,5 @@ venv/
 artifacts/
 *.onnx
 *.pt
+__pycache__/
+*.pyc
