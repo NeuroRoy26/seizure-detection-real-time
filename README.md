@@ -1,10 +1,12 @@
-# Seizure Detection (Real-Time) — Project So Far
+# Seizure Detection from Real-Time EEG
 
 This repo is building toward a real-time seizure detection demo:
 
 - **FastAPI** backend that ingests “EEG” samples and serves the most recent sample plus a (currently dummy) seizure probability.
 - **Mock EEG streamer** that simulates **23-channel** EEG with occasional large anomalies (“mock seizures”) and POSTs samples to the API.
 - **Streamlit dashboard** that polls the API and plots the live EEG and seizure probability in near real-time.
+- Uses a custom 8 electrode EEG setup for real-time streaming
+- Tested on commercially available g.Tec Unicorn (not sponsored) with custom API for real-time streaming (API not available in this repo)
 
 This repo now supports a full **end-to-end** pipeline where you:
 
@@ -375,27 +377,13 @@ curl -I "https://storage.googleapis.com/YOUR_BUCKET/models/latest.onnx"
 - `403` = object exists but is not public (bucket policy / public access prevention)
 
 ---
-
+---
 ## Where this is headed (next milestones)
 
-The long-term target is:
-
-- **Real dataset**: CHB-MIT Scalp EEG Database (PhysioNet)
-- **Model**: train a CNN/LSTM (or other deep model) for seizure detection
-- **Engineering twist**:
-  - DVC for data/versioning
-  - FastAPI serving the best model
-  - Streaming simulator that mimics real-time acquisition
-  - Docker containerization
-  - Deployment to a free tier (Render/AWS free tier)
-  - Streamlit dashboard for live visualization
-
-Immediate TO-DO:
-
-- Replace the random probability in `api.py` with a real inference function.
-- Add a “windowed” inference approach (e.g., model expects \(N \times 23\) samples rather than a single sample).
-- Introduce DVC and a `data/` pipeline for dataset download + preprocessing.
-
+- **Retraining Model**: On other datasets (PhysioNet/Kaggle)
+- **Explore other Model**: train for seizure detection
+- **Shadow Deployment**: Making it as free/cost-efficient as possible
+---
 ---
 
 ## Model weights: auto-fetch `latest.onnx` (portfolio-friendly)
