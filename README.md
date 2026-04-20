@@ -378,10 +378,69 @@ curl -I "https://storage.googleapis.com/YOUR_BUCKET/models/latest.onnx"
 
 ---
 ---
+## Local Training Pipeline (Plan B — Fully Offline)
+
+> **What changed:** The original workflow trained the model in Google Colab (PyTorch) and uploaded to GCS. We have now added a fully **local, offline alternative** pipeline that runs entirely on a Windows machine using TensorFlow. This is the current recommended approach for retraining.
+
+### New Files Added
+
+| File | Purpose |
+|---|---|
+| `build_local_database.py` | ETL pipeline — processes 14GB raw CHB-MIT EDF files into a compressed HDF5 database |
+| `local_train_onnx.py` | AI trainer — streams the HDF5 database, trains a 1D-CNN, exports `latest.onnx` |
+| `channel_selection.py` | Internal utility — auto-imported by the ETL script to identify the Top 10 stable EEG channels |
+| `config.yaml` | Central configuration — edit this file to change paths, epochs, batch size, etc. |
+
+### How It Works (Quick Summary)
+
+**Step 1 — Build the database** (run once):
+```bash
+python build_local_database.py
+```
+Reads all 212 `.edf` hospital recordings + doctor's `*-summary.txt` notes. Applies notch & bandpass filters, slices into 2-second windows, labels each window as `0` (Normal) or `1` (Seizure), and writes everything to `train_database.h5`.
+
+**Step 2 — Train and export** (run when retraining):
+```bash
+python local_train_onnx.py
+```
+Streams the HDF5 database using a memory-safe generator (prevents RAM overflow on 16GB laptops), trains the 1D-CNN, prints clinical metrics (Accuracy, Precision, Recall, F1, RMSE), and exports `latest.onnx` directly into this repo folder.
+
+### Configuration (`config.yaml`)
+All parameters are centralized. **Never edit the Python scripts directly** — change settings here:
+```yaml
+paths:
+  local_data_dir: "D:\\path\\to\\dataset"
+  hdf5_database_path: "D:\\path\\to\\train_database.h5"
+  target_onnx_path: "D:\\path\\to\\seizure-detection-real-time\\latest.onnx"
+signal_processing:
+  window_sec: 2.0
+  target_hz: 128.0
+  top_n_channels: 10
+training:
+  batch_size: 64
+  epochs: 20
+  learning_rate: 0.001
+  test_split: 0.20
+```
+
+### Data Contract
+The exported `latest.onnx` is **identical** to the Colab-exported model:
+- **Input shape:** `(1, 10, 256)` — 10 channels × 256 samples (2s @ 128Hz)
+- **Output:** `(1, 2)` raw logits → `argmax` → `0` Normal / `1` Seizure
+- The `api.py` backend loads this file without any modification.
+
+### Dependencies (local pipeline only)
+```bash
+pip install mne numpy h5py tensorflow scikit-learn matplotlib seaborn pyyaml tf2onnx onnx
+```
+
+---
+
 ## Where this is headed (next milestones)
 
+- **GCS Upload:** Automate upload of locally trained `latest.onnx` to Google Cloud Storage bucket
 - **Retraining Model**: On other datasets (PhysioNet/Kaggle)
-- **Explore other Model**: train for seizure detection
+- **Explore other Model**: LSTM or Transformer architectures for improved seizure Recall
 - **Shadow Deployment**: Making it as free/cost-efficient as possible
 ---
 ---
