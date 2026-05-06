@@ -1,6 +1,7 @@
 import importlib
 import sys
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 CHANNEL_COUNT = 23
 
@@ -26,13 +27,14 @@ def _fake_streamlit():
     st = SimpleNamespace()
     st.session_state = _SessionState()
     st.sidebar = _Ctx()
-    st.title = lambda *args, **kwargs: None
-    st.subheader = lambda *args, **kwargs: None
-    st.info = lambda *args, **kwargs: None
-    st.pyplot = lambda *args, **kwargs: None
-    st.error = lambda *args, **kwargs: None
-    st.write = lambda *args, **kwargs: None
-    st.header = lambda *args, **kwargs: None
+    # Use MagicMock to safely intercept calls without side effects or recursion.
+    st.title = MagicMock()
+    st.subheader = MagicMock()
+    st.info = MagicMock()
+    st.pyplot = MagicMock()
+    st.error = MagicMock()
+    st.write = MagicMock()
+    st.header = MagicMock()
     st.text_input = lambda *args, **kwargs: "http://127.0.0.1:8000/latest"
     st.slider = lambda *args, **kwargs: kwargs.get("value")
     st.selectbox = lambda *args, **kwargs: "Channel 1"
@@ -95,5 +97,8 @@ def test_plot_eeg_empty_buffer_does_not_raise(monkeypatch):
 
 def test_plot_eeg_single_channel(monkeypatch):
     dashboard = _import_dashboard(monkeypatch)
+    # Avoid any matplotlib backend/UI interactions; just ensure no recursion/errors.
+    dashboard.plt.subplots = MagicMock(return_value=(MagicMock(), MagicMock()))
+    dashboard.plt.close = MagicMock()
     buffer = [{"data": [float(i)] * 23, "seizure_probability": 0.1} for i in range(5)]
     dashboard._plot_eeg(buffer, channel_mode="Channel 3")

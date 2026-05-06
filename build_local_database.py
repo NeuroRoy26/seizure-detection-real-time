@@ -103,15 +103,6 @@ def _load_config(config_path: str = "config.yaml"):
 
 def main():
     global LOCAL_DATA_DIR, HDF5_DATABASE_PATH, WINDOW_SEC, TARGET_HZ, TOP_N_CHANNELS, BEST_INDICES
-    if mne is None:
-        raise ImportError("mne is required to run main()")
-    if h5py is None:
-        raise ImportError("h5py is required to run main()")
-
-    # Import here so unit tests can import this module without pulling
-    # in the full dependency tree.
-    from channel_selection import calculate_channel_stability
-
     config = _load_config()
 
     LOCAL_DATA_DIR = config["paths"]["local_data_dir"]
@@ -134,6 +125,16 @@ def main():
     if len(all_edfs) == 0:
         print("[!] No EDFs found; skipping database build.")
         return
+
+    # Only require heavy deps once we know we actually have data to process.
+    if mne is None:
+        raise ImportError("mne is required to run main()")
+    if h5py is None:
+        raise ImportError("h5py is required to run main()")
+
+    # Import here so unit tests can import this module without pulling
+    # in the full dependency tree.
+    from channel_selection import calculate_channel_stability
 
     discovery_files = all_edfs[:3]
     sessions_data = []

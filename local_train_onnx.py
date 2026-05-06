@@ -11,18 +11,37 @@ using generator logic to flawlessly avoid memory overflows, and exports
 import os
 import h5py
 import numpy as np
-import tensorflow as tf
 from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_class_weight
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, mean_squared_error
-from tensorflow.keras import layers, models
-from tensorflow.keras.utils import Sequence
-import matplotlib.pyplot as plt
-import seaborn as sns
 import subprocess
 import yaml
 import tempfile
 from pathlib import Path
+
+# Optional heavy deps: allow importing this module for unit tests that
+# don't need the full training / plotting pipeline.
+try:
+    import tensorflow as tf  # type: ignore
+    from tensorflow.keras import layers, models  # type: ignore
+    from tensorflow.keras.utils import Sequence  # type: ignore
+except Exception:  # pragma: no cover
+    tf = None
+    layers = None
+    models = None
+
+    class Sequence:  # minimal fallback base class
+        pass
+
+try:
+    import matplotlib.pyplot as plt  # type: ignore
+except Exception:  # pragma: no cover
+    plt = None
+
+try:
+    import seaborn as sns  # type: ignore
+except Exception:  # pragma: no cover
+    sns = None
 
 # Keep module-level names defined so tests can patch/inspect them if needed.
 HDF5_DATABASE_PATH = None
@@ -59,6 +78,9 @@ class HDF5Generator(Sequence):
         return X_batch, y_batch
 
 def build_api_compliant_cnn(input_shape):
+    if layers is None or models is None:
+        raise ImportError("tensorflow is required for build_api_compliant_cnn()")
+
     inputs = layers.Input(shape=input_shape)
     
     # Mathematical integration to bypass Streamlit API flaws
@@ -121,6 +143,9 @@ def main():
     print("=" * 60)
     print("1. HARDWARE NEGOTIATION")
     print("=" * 60)
+
+    if tf is None:
+        raise ImportError("tensorflow is required to run main()")
 
     physical_devices = tf.config.list_physical_devices("GPU")
     if len(physical_devices) > 0:

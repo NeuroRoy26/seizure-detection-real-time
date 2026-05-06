@@ -1,26 +1,9 @@
 import os
-import sys
 import tempfile
-from unittest.mock import MagicMock
 
 import pytest
 
 import numpy as np
-
-# ── Stub tensorflow so local_train_onnx.py can be imported in CI ──────────
-# tensorflow is not installed in CI; we mock it to allow import of the module.
-# Tests that actually need a real TF model use pytest.importorskip below.
-for _mod in [
-    "tensorflow",
-    "tensorflow.keras",
-    "tensorflow.keras.layers",
-    "tensorflow.keras.models",
-    "tensorflow.keras.utils",
-]:
-    sys.modules.setdefault(_mod, MagicMock())
-
-# seaborn may be absent; stub it too (even if present, this is harmless).
-sys.modules.setdefault("seaborn", MagicMock())
 
 # h5py must actually be present (added to requirements-dev.txt)
 h5py = pytest.importorskip("h5py", reason="h5py not installed")
