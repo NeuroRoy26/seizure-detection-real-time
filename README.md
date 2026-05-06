@@ -78,6 +78,8 @@ or:
 ```bash
 pip install -r requirements.txt -r requirements-dev.txt
 pytest
+# More verbose + coverage (useful during development):
+pytest -v --cov=. --cov-report=term-missing
 ```
 
 Tests are organized under `tests/` by pipeline stage (`stage_01_*` through `stage_07_*`).
@@ -390,7 +392,7 @@ curl -I "https://storage.googleapis.com/YOUR_BUCKET/models/latest.onnx"
 | File | Purpose |
 |---|---|
 | `build_local_database.py` | ETL pipeline — processes 14GB raw CHB-MIT EDF files into a compressed HDF5 database |
-| `local_train_onnx.py` | AI trainer — streams the HDF5 database, trains a 1D-CNN, exports `latest.onnx` |
+| `local_train_onnx.py` | AI trainer — streams the HDF5 database, trains a transfer-learning model (ImageNet backbone), exports `latest.onnx` |
 | `channel_selection.py` | Internal utility — auto-imported by the ETL script to identify the Top 10 stable EEG channels |
 | `config.yaml` | Central configuration — edit this file to change paths, epochs, batch size, etc. |
 
@@ -407,6 +409,7 @@ Reads all 212 `.edf` hospital recordings + doctor's `*-summary.txt` notes. Appli
 python local_train_onnx.py
 ```
 Streams the HDF5 database using a memory-safe generator (prevents RAM overflow on 16GB laptops), trains the 1D-CNN, prints clinical metrics (Accuracy, Precision, Recall, F1, RMSE), and exports `latest.onnx` directly into this repo folder.
+Streams the HDF5 database using a memory-safe generator (prevents RAM overflow on 16GB laptops), trains a transfer-learning model (pre-trained ImageNet backbone with a 1D→2D bridge), prints clinical metrics (Accuracy, Precision, Recall, F1, RMSE), and exports `latest.onnx` directly into this repo folder.
 
 ### Configuration (`config.yaml`)
 All parameters are centralized. **Never edit the Python scripts directly** — change settings here:
@@ -429,13 +432,16 @@ training:
 ### Data Contract
 The exported `latest.onnx` is **identical** to the Colab-exported model:
 - **Input shape:** `(1, 10, 256)` — 10 channels × 256 samples (2s @ 128Hz)
-- **Output:** `(1, 2)` raw logits → `argmax` → `0` Normal / `1` Seizure
-- The `api.py` backend loads this file without any modification.
+- **Output:** `(1, 2)` **raw logits** (the backend applies **softmax** and returns `seizure_probability = P(class=1)`).
+- The `api.py` backend loads this file without any modification. Do not export a model with a final softmax layer, or you will effectively “softmax twice”.
 
 ### Dependencies (local pipeline only)
 ```bash
 pip install mne numpy h5py tensorflow scikit-learn matplotlib seaborn pyyaml tf2onnx onnx
 ```
+
+Notes:
+- The first run may download ImageNet weights for the backbone (e.g. MobileNetV2) if not already cached.
 
 ---
 
