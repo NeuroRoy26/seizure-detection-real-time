@@ -81,28 +81,54 @@ def build_api_compliant_cnn(input_shape):
     if layers is None or models is None:
         raise ImportError("tensorflow is required for build_api_compliant_cnn()")
 
+    if tf is None:
+        raise ImportError("tensorflow is required for build_api_compliant_cnn()")
+
+    # Data contract (do not change): API feeds ONNX with (1, 10, 256)
     inputs = layers.Input(shape=input_shape)
-    
-    # Mathematical integration to bypass Streamlit API flaws
-    x = layers.BatchNormalization(axis=-1, name="Input_Z_Scorer")(inputs)
-    
-    x = layers.Conv1D(filters=32, kernel_size=7, padding="same")(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.ReLU()(x)
-    x = layers.MaxPooling1D(pool_size=2)(x)
-    
-    x = layers.Conv1D(filters=64, kernel_size=5, padding="same")(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.ReLU()(x)
-    x = layers.MaxPooling1D(pool_size=2)(x)
-    
-    x = layers.Conv1D(filters=128, kernel_size=3, padding="same")(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.ReLU()(x)
-    x = layers.GlobalAveragePooling1D()(x)
-    
-    outputs = layers.Dense(2, activation='linear', name="PyTorch_Logit_Mimic")(x)
-    return models.Model(inputs=inputs, outputs=outputs)
+
+    # ---------------------------------------------------------------------
+    # 1D -> 2D Bridge (strict requirement)
+    # Immediately after Input: reshape to (10, 256, 1), then expand to 3ch.
+    # ---------------------------------------------------------------------
+    x = layers.Reshape((10, 256, 1), name="Bridge_Reshape_10x256x1")(inputs)
+    x = layers.Conv2D(
+        filters=3,
+        kernel_size=(1, 1),
+        padding="same",
+        name="Bridge_ToRGB_1x1Conv",
+    )(x)  # (10, 256, 3)
+
+    # Optional: normalize after the bridge (kept for stable export + parity intent)
+    x = layers.BatchNormalization(axis=-1, name="Input_Z_Scorer")(x)
+
+    # Most ImageNet backbones expect >= 32x32 (often 224x224). We resize to a
+    # canonical size while keeping the upstream contract unchanged.
+    x = layers.Resizing(224, 224, interpolation="bilinear", name="Bridge_Resize_224")(x)
+
+    # ---------------------------------------------------------------------
+    # Transfer learning backbone (ImageNet), frozen.
+    # ---------------------------------------------------------------------
+    base = tf.keras.applications.MobileNetV2(
+        include_top=False,
+        weights="imagenet",
+        input_shape=(224, 224, 3),
+    )
+    base.trainable = False
+
+    # Forward through frozen backbone in inference mode.
+    x = base(x, training=False)
+
+    # ---------------------------------------------------------------------
+    # Classification head
+    # ---------------------------------------------------------------------
+    x = layers.GlobalAveragePooling2D(name="Head_GAP")(x)
+    x = layers.Dropout(0.25, name="Head_Dropout")(x)
+
+    # IMPORTANT: api.py expects logits and applies softmax itself.
+    outputs = layers.Dense(2, activation="linear", name="PyTorch_Logit_Mimic")(x)
+
+    return models.Model(inputs=inputs, outputs=outputs, name="EEG_TL_MobileNetV2")
 
 def print_metrics(dataset_name, y_true, y_pred):
     acc = accuracy_score(y_true, y_pred)
@@ -257,8 +283,6 @@ def main():
         str(SAVED_MODEL_DIR),
         "--output",
         TARGET_ONNX_PATH,
-        "--inputs-as-nchw",
-        "Input_Z_Scorer",
     ]
 
     try:
