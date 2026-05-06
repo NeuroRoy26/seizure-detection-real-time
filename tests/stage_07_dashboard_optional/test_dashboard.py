@@ -42,17 +42,24 @@ def _fake_streamlit():
     return st
 
 
-def test_trim_buffer_keeps_only_last_max_len(monkeypatch):
+def _import_dashboard(monkeypatch):
     monkeypatch.setitem(sys.modules, "streamlit", _fake_streamlit())
+    # Ensure we don't reuse a previously-imported dashboard module that may have
+    # imported the real streamlit (or carries mutated session_state).
+    sys.modules.pop("dashboard", None)
     dashboard = importlib.import_module("dashboard")
+    return dashboard
+
+
+def test_trim_buffer_keeps_only_last_max_len(monkeypatch):
+    dashboard = _import_dashboard(monkeypatch)
     dashboard.st.session_state.buffer = [{"v": i} for i in range(5)]
     dashboard._trim_buffer(max_len=2)
     assert dashboard.st.session_state.buffer == [{"v": 3}, {"v": 4}]
 
 
 def test_fetch_latest_returns_json(monkeypatch):
-    monkeypatch.setitem(sys.modules, "streamlit", _fake_streamlit())
-    dashboard = importlib.import_module("dashboard")
+    dashboard = _import_dashboard(monkeypatch)
 
     class FakeResponse:
         def raise_for_status(self):
@@ -67,9 +74,7 @@ def test_fetch_latest_returns_json(monkeypatch):
 
 
 def test_init_state_sets_defaults(monkeypatch):
-    monkeypatch.setitem(sys.modules, "streamlit", _fake_streamlit())
-    dashboard = importlib.import_module("dashboard")
-    importlib.reload(dashboard)  # ensure clean session state for this module instance
+    dashboard = _import_dashboard(monkeypatch)
     dashboard._init_state()
     assert dashboard.st.session_state["running"] is False
     assert dashboard.st.session_state["buffer"] == []
@@ -77,21 +82,18 @@ def test_init_state_sets_defaults(monkeypatch):
 
 
 def test_trim_buffer_zero_max_len_clears(monkeypatch):
-    monkeypatch.setitem(sys.modules, "streamlit", _fake_streamlit())
-    dashboard = importlib.import_module("dashboard")
+    dashboard = _import_dashboard(monkeypatch)
     dashboard.st.session_state.buffer = [{"v": 1}, {"v": 2}]
     dashboard._trim_buffer(max_len=0)
     assert dashboard.st.session_state.buffer == []
 
 
 def test_plot_eeg_empty_buffer_does_not_raise(monkeypatch):
-    monkeypatch.setitem(sys.modules, "streamlit", _fake_streamlit())
-    dashboard = importlib.import_module("dashboard")
+    dashboard = _import_dashboard(monkeypatch)
     dashboard._plot_eeg([], channel_mode="Channel 1")
 
 
 def test_plot_eeg_single_channel(monkeypatch):
-    monkeypatch.setitem(sys.modules, "streamlit", _fake_streamlit())
-    dashboard = importlib.import_module("dashboard")
+    dashboard = _import_dashboard(monkeypatch)
     buffer = [{"data": [float(i)] * 23, "seizure_probability": 0.1} for i in range(5)]
     dashboard._plot_eeg(buffer, channel_mode="Channel 3")
