@@ -21,6 +21,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import subprocess
 import yaml
+import tempfile
+from pathlib import Path
 
 # Keep module-level names defined so tests can patch/inspect them if needed.
 HDF5_DATABASE_PATH = None
@@ -142,7 +144,7 @@ def main():
     print("3. CLINICAL STRATIFICATION & LOSS BALANCING")
     print("=" * 60)
 
-    idx_train, idx_test, y_train, y_test = train_test_split(
+    idx_train, idx_test, y_train, _ = train_test_split(
         indices_full,
         y_full,
         test_size=TEST_SPLIT,
@@ -217,8 +219,9 @@ def main():
     print("=" * 60)
 
     # Make sure we save as SavedModel natively so tf2onnx parses it easily
-    SAVED_MODEL_DIR = r"D:\Antigravity\chb_seizure_pipeline\saved_model_dir"
-    model.export(SAVED_MODEL_DIR)
+    SAVED_MODEL_DIR = Path(tempfile.mkdtemp(prefix="saved_model_"))
+    SAVED_MODEL_DIR.mkdir(parents=True, exist_ok=True)
+    model.export(str(SAVED_MODEL_DIR))
     print(f"[*] Base Graph wrapper safely deployed to: {SAVED_MODEL_DIR}")
 
     cmd = [
@@ -226,7 +229,7 @@ def main():
         "-m",
         "tf2onnx.convert",
         "--saved-model",
-        SAVED_MODEL_DIR,
+        str(SAVED_MODEL_DIR),
         "--output",
         TARGET_ONNX_PATH,
         "--inputs-as-nchw",
@@ -236,8 +239,7 @@ def main():
     try:
         print("[*] Triggering PyTorch ONNX cross-compiler execution...")
         subprocess.run(
-            " ".join(cmd),
-            shell=True,
+            cmd,
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

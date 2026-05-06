@@ -85,6 +85,7 @@ def test_generate_sample_channel_count():
 
 def test_main_parses_custom_args():
     from unittest.mock import patch
+    import sys
 
     import mock_streamer
 
@@ -92,13 +93,10 @@ def test_main_parses_custom_args():
         "mock_streamer.time.sleep", side_effect=StopIteration
     ):
         try:
-            mock_streamer.main.__globals__["sys"] = __import__("sys")
-            import sys
-
             sys.argv = ["mock_streamer.py", "--channels", "5", "--hz", "1.0"]
             mock_streamer.main()
         except StopIteration:
             pass
 
-    args, kwargs = mock_post.call_args
+    args, _kwargs = mock_post.call_args
     assert len(args[1]) == 5
