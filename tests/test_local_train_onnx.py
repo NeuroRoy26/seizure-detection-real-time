@@ -47,7 +47,7 @@ def test_build_api_compliant_cnn_has_batch_norm():
     from local_train_onnx import build_api_compliant_cnn
 
     model = build_api_compliant_cnn(input_shape=(10, 256))
-    layer_types = [type(l).__name__ for l in model.layers]
+    layer_types = [type(layer).__name__ for layer in model.layers]
     assert "BatchNormalization" in layer_types
 
 
