@@ -14,62 +14,36 @@ import os
 import glob
 import codecs
 import re
-import h5py
-import mne
 import numpy as np
 import warnings
 import yaml
 
+# Optional heavy deps: allow importing this module for unit tests that
+# don't need the full ETL pipeline.
+try:
+    import mne  # type: ignore
+except Exception:  # pragma: no cover
+    mne = None
+
+try:
+    import h5py  # type: ignore
+except Exception:  # pragma: no cover
+    h5py = None
+
 # Suppress visual MNE duplication spam in Windows console
 warnings.filterwarnings("ignore")
-mne.set_log_level("ERROR")
-
-# Import the MATLAB-translated script we wrote earlier
-from channel_selection import calculate_channel_stability
-
-with open("config.yaml", "r") as f:
-    config = yaml.safe_load(f)
+if mne is not None:  # pragma: no cover
+    mne.set_log_level("ERROR")
 
 # ── DYNAMIC CONFIGURATION ─────────────────────────────────────────────────
-LOCAL_DATA_DIR = config['paths']['local_data_dir']
-HDF5_DATABASE_PATH = config['paths']['hdf5_database_path']
-
-WINDOW_SEC = config['signal_processing']['window_sec']
-TARGET_HZ = config['signal_processing']['target_hz']
-TOP_N_CHANNELS = config['signal_processing']['top_n_channels']
-
-print("="*60)
-print("1. DISCOVERING DATA & CALCULATING CHANNEL TOPOGRAPHY")
-print("="*60)
-
-# Recursively locate every EDF in the massive payload
-all_edfs = sorted(glob.glob(os.path.join(LOCAL_DATA_DIR, '**', '*.edf'), recursive=True))
-print(f"[*] Native Windows Scan discovered: {len(all_edfs)} EDFs.")
-
-if len(all_edfs) == 0:
-    raise FileNotFoundError("\n[X] Zero EDFs found! Please double-check LOCAL_DATA_DIR!")
-
-# Grab 3 random patient files to run the stability check algorithm
-discovery_files = all_edfs[:3]
-sessions_data = []
-
-sfreq_global = None
-channel_names_global = None
-
-for path in discovery_files:
-    raw = mne.io.read_raw_edf(path, preload=True)
-    sessions_data.append(raw.get_data())
-    channel_names_global = raw.ch_names
-    sfreq_global = raw.info['sfreq']
-
-# Run the Scipy Mathematical Evaluation locally
-discovery_results = calculate_channel_stability(sessions_data, sfreq_global, channel_names_global, top_n=TOP_N_CHANNELS)
-BEST_INDICES = discovery_results['best_indices']
-
-
-print("\n"+"="*60)
-print("2. BUILDING LOCAL HDF5 COMPRESSION DATABASE")
-print("="*60)
+# NOTE: Keep these module-level names defined so tests can patch them.
+# They are populated from config.yaml inside main().
+LOCAL_DATA_DIR = None
+HDF5_DATABASE_PATH = None
+WINDOW_SEC = None
+TARGET_HZ = None
+TOP_N_CHANNELS = None
+BEST_INDICES = None
 
 def parse_seizure_summary(summary_path):
     seizure_data = {}
@@ -88,6 +62,9 @@ def parse_seizure_summary(summary_path):
     return seizure_data
 
 def preprocess_and_window(raw, seizure_times, best_indices, target_hz, win_sec):
+    if mne is None:
+        raise ImportError("mne is required for preprocess_and_window()")
+
     sfreq = raw.info['sfreq']
     
     raw.filter(1.0, 50.0, method='fir', verbose=False)
@@ -120,44 +97,131 @@ def preprocess_and_window(raw, seizure_times, best_indices, target_hz, win_sec):
         
     return np.array(X, dtype=np.float32), np.array(y, dtype=np.int32)
 
+def _load_config(config_path: str = "config.yaml"):
+    with open(config_path, "r") as f:
+        return yaml.safe_load(f)
 
-# Boot up the HDF5 writer over the local NVMe logic
-with h5py.File(HDF5_DATABASE_PATH, 'w') as h5f:
-    max_dims = (None, len(BEST_INDICES), int(TARGET_HZ * WINDOW_SEC))
-    ds_x = h5f.create_dataset('X', shape=(0, len(BEST_INDICES), 256), maxshape=max_dims, dtype='float32', chunks=True)
-    ds_y = h5f.create_dataset('y', shape=(0,), maxshape=(None,), dtype='int32', chunks=True)
-    
-    # Locate all patient directories accurately
-    patient_dirs = sorted(glob.glob(os.path.join(LOCAL_DATA_DIR, 'chb*')))
-    
-    for p_dir in patient_dirs:
-        if not os.path.isdir(p_dir): continue
-        summary_file = glob.glob(os.path.join(p_dir, '*summary.txt'))
-        if not summary_file: continue
-        
-        seizure_map = parse_seizure_summary(summary_file[0])
-        edfs = sorted(glob.glob(os.path.join(p_dir, '*.edf')))
-        
-        for edf_path in edfs:
-            fname = os.path.basename(edf_path)
-            try:
-                raw_edf = mne.io.read_raw_edf(edf_path, preload=True, verbose=False)
-                s_times = seizure_map.get(fname, [])
-                X_chunk, y_chunk = preprocess_and_window(raw_edf, s_times, BEST_INDICES, TARGET_HZ, WINDOW_SEC)
-                
-                if len(X_chunk) > 0:
-                    current_size = ds_x.shape[0]
-                    ds_x.resize(current_size + len(X_chunk), axis=0)
-                    ds_y.resize(current_size + len(X_chunk), axis=0)
-                    ds_x[current_size:] = X_chunk
-                    ds_y[current_size:] = y_chunk
-                    
-                print(f"  [OK] Extracted {len(X_chunk):>4} clinical windows -> {fname}")
-                
-            except Exception as e:
-                print(f"  [X] Skipped locally corrupted file {fname} | Error: {e}")
+def main():
+    global LOCAL_DATA_DIR, HDF5_DATABASE_PATH, WINDOW_SEC, TARGET_HZ, TOP_N_CHANNELS, BEST_INDICES
+    if mne is None:
+        raise ImportError("mne is required to run main()")
+    if h5py is None:
+        raise ImportError("h5py is required to run main()")
 
-print("\n=======================================================")
-print(f"✅ LOCAL HDF5 PIPELINE COMPLETE! Database securely locked.")
-print(f"   Database Path: {HDF5_DATABASE_PATH}")
-print("=======================================================")
+    # Import here so unit tests can import this module without pulling
+    # in the full dependency tree.
+    from channel_selection import calculate_channel_stability
+
+    config = _load_config()
+
+    LOCAL_DATA_DIR = config["paths"]["local_data_dir"]
+    HDF5_DATABASE_PATH = config["paths"]["hdf5_database_path"]
+
+    WINDOW_SEC = config["signal_processing"]["window_sec"]
+    TARGET_HZ = config["signal_processing"]["target_hz"]
+    TOP_N_CHANNELS = config["signal_processing"]["top_n_channels"]
+
+    print("=" * 60)
+    print("1. DISCOVERING DATA & CALCULATING CHANNEL TOPOGRAPHY")
+    print("=" * 60)
+
+    all_edfs = sorted(
+        glob.glob(os.path.join(LOCAL_DATA_DIR, "**", "*.edf"), recursive=True)
+    )
+    print(f"[*] Local scan discovered: {len(all_edfs)} EDFs.")
+
+    # Be import/test-friendly: if the local dataset isn't present, exit cleanly.
+    if len(all_edfs) == 0:
+        print("[!] No EDFs found; skipping database build.")
+        return
+
+    discovery_files = all_edfs[:3]
+    sessions_data = []
+
+    sfreq_global = None
+    channel_names_global = None
+
+    for path in discovery_files:
+        raw = mne.io.read_raw_edf(path, preload=True, verbose=False)
+        sessions_data.append(raw.get_data())
+        channel_names_global = raw.ch_names
+        sfreq_global = raw.info["sfreq"]
+
+    discovery_results = calculate_channel_stability(
+        sessions_data,
+        sfreq_global,
+        channel_names_global,
+        top_n=TOP_N_CHANNELS,
+    )
+    BEST_INDICES = discovery_results["best_indices"]
+
+    print("\n" + "=" * 60)
+    print("2. BUILDING LOCAL HDF5 COMPRESSION DATABASE")
+    print("=" * 60)
+
+    win_samples = int(TARGET_HZ * WINDOW_SEC)
+
+    # Boot up the HDF5 writer over the local NVMe logic
+    with h5py.File(HDF5_DATABASE_PATH, "w") as h5f:
+        max_dims = (None, len(BEST_INDICES), win_samples)
+        ds_x = h5f.create_dataset(
+            "X",
+            shape=(0, len(BEST_INDICES), win_samples),
+            maxshape=max_dims,
+            dtype="float32",
+            chunks=True,
+        )
+        ds_y = h5f.create_dataset(
+            "y",
+            shape=(0,),
+            maxshape=(None,),
+            dtype="int32",
+            chunks=True,
+        )
+
+        patient_dirs = sorted(glob.glob(os.path.join(LOCAL_DATA_DIR, "chb*")))
+
+        for p_dir in patient_dirs:
+            if not os.path.isdir(p_dir):
+                continue
+
+            summary_file = glob.glob(os.path.join(p_dir, "*summary.txt"))
+            if not summary_file:
+                continue
+
+            seizure_map = parse_seizure_summary(summary_file[0])
+            edfs = sorted(glob.glob(os.path.join(p_dir, "*.edf")))
+
+            for edf_path in edfs:
+                fname = os.path.basename(edf_path)
+                try:
+                    raw_edf = mne.io.read_raw_edf(edf_path, preload=True, verbose=False)
+                    s_times = seizure_map.get(fname, [])
+                    X_chunk, y_chunk = preprocess_and_window(
+                        raw_edf,
+                        s_times,
+                        BEST_INDICES,
+                        TARGET_HZ,
+                        WINDOW_SEC,
+                    )
+
+                    if len(X_chunk) > 0:
+                        current_size = ds_x.shape[0]
+                        ds_x.resize(current_size + len(X_chunk), axis=0)
+                        ds_y.resize(current_size + len(X_chunk), axis=0)
+                        ds_x[current_size:] = X_chunk
+                        ds_y[current_size:] = y_chunk
+
+                    print(f"  [OK] Extracted {len(X_chunk):>4} clinical windows -> {fname}")
+
+                except Exception as e:
+                    print(f"  [X] Skipped locally corrupted file {fname} | Error: {e}")
+
+    print("\n=======================================================")
+    print("✅ LOCAL HDF5 PIPELINE COMPLETE! Database securely locked.")
+    print(f"   Database Path: {HDF5_DATABASE_PATH}")
+    print("=======================================================")
+
+
+if __name__ == "__main__":
+    main()
