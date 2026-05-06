@@ -1,11 +1,29 @@
 import os
+import sys
 import tempfile
+from unittest.mock import MagicMock
 
 import pytest
 
 import numpy as np
 
-h5py = pytest.importorskip("h5py")
+# ── Stub tensorflow so local_train_onnx.py can be imported in CI ──────────
+# tensorflow is not installed in CI; we mock it to allow import of the module.
+# Tests that actually need a real TF model use pytest.importorskip below.
+for _mod in [
+    "tensorflow",
+    "tensorflow.keras",
+    "tensorflow.keras.layers",
+    "tensorflow.keras.models",
+    "tensorflow.keras.utils",
+]:
+    sys.modules.setdefault(_mod, MagicMock())
+
+# seaborn may be absent; stub it too (even if present, this is harmless).
+sys.modules.setdefault("seaborn", MagicMock())
+
+# h5py must actually be present (added to requirements-dev.txt)
+h5py = pytest.importorskip("h5py", reason="h5py not installed")
 
 
 def _make_h5(n=100, channels=10, samples=256):
@@ -23,23 +41,28 @@ def test_hdf5_generator_len():
     from local_train_onnx import HDF5Generator
 
     path = _make_h5(n=100)
-    gen = HDF5Generator(path, np.arange(100), batch_size=32)
-    assert len(gen) == 4  # ceil(100/32)
-    os.unlink(path)
+    try:
+        gen = HDF5Generator(path, np.arange(100), batch_size=32)
+        assert len(gen) == 4  # ceil(100/32)
+    finally:
+        os.unlink(path)
 
 
 def test_hdf5_generator_getitem_shapes():
     from local_train_onnx import HDF5Generator
 
     path = _make_h5(n=50, channels=10, samples=256)
-    gen = HDF5Generator(path, np.arange(50), batch_size=16)
-    X_batch, y_batch = gen[0]
-    assert X_batch.shape == (16, 10, 256)
-    assert y_batch.shape == (16,)
-    os.unlink(path)
+    try:
+        gen = HDF5Generator(path, np.arange(50), batch_size=16)
+        X_batch, y_batch = gen[0]
+        assert X_batch.shape == (16, 10, 256)
+        assert y_batch.shape == (16,)
+    finally:
+        os.unlink(path)
 
 
 def test_build_api_compliant_cnn_output_shape():
+    pytest.importorskip("tensorflow", reason="tensorflow not installed")
     from local_train_onnx import build_api_compliant_cnn
 
     model = build_api_compliant_cnn(input_shape=(10, 256))
@@ -47,6 +70,7 @@ def test_build_api_compliant_cnn_output_shape():
 
 
 def test_build_api_compliant_cnn_has_batch_norm():
+    pytest.importorskip("tensorflow", reason="tensorflow not installed")
     from local_train_onnx import build_api_compliant_cnn
 
     model = build_api_compliant_cnn(input_shape=(10, 256))

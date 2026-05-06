@@ -1,7 +1,22 @@
+import pytest
 import numpy as np
-import mne
 from unittest.mock import patch
 
+
+# ── helpers ──────────────────────────────────────────────────────────────
+
+def _make_raw(n_channels=3, n_seconds=10, sfreq=256.0):
+    mne = pytest.importorskip("mne", reason="mne not installed")
+    data = np.random.randn(n_channels, int(n_seconds * sfreq)) * 1e-5
+    info = mne.create_info(
+        ch_names=[f"EEG{i}" for i in range(n_channels)],
+        sfreq=sfreq,
+        ch_types="eeg",
+    )
+    return mne.io.RawArray(data, info, verbose=False)
+
+
+# ── parse_seizure_summary tests (no mne needed, always run in CI) ─────────
 
 def test_parse_seizure_summary_extracts_times(tmp_path):
     content = (
@@ -30,15 +45,7 @@ def test_parse_seizure_summary_no_seizures(tmp_path):
     assert result["chb01_01.edf"] == []
 
 
-def _make_raw(n_channels=3, n_seconds=10, sfreq=256.0):
-    data = np.random.randn(n_channels, int(n_seconds * sfreq)) * 1e-5
-    info = mne.create_info(
-        ch_names=[f"EEG{i}" for i in range(n_channels)],
-        sfreq=sfreq,
-        ch_types="eeg",
-    )
-    return mne.io.RawArray(data, info, verbose=False)
-
+# ── preprocess_and_window tests (skipped in CI if mne absent) ─────────────
 
 def test_preprocess_and_window_shapes():
     from build_local_database import preprocess_and_window
@@ -68,9 +75,11 @@ def test_preprocess_and_window_labels_seizure_window():
         target_hz=128,
         win_sec=2,
     )
-    assert y[0] == 1
-    assert y[2] == 0
+    assert y[0] == 1  # overlaps seizure [0,3)
+    assert y[2] == 0  # window [4,6) is outside
 
+
+# ── main() test (no mne needed — empty patient dir has no .edf files) ─────
 
 def test_main_skips_missing_summary(tmp_path):
     patient_dir = tmp_path / "chb01"
