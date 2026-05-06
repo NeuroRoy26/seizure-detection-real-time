@@ -1,8 +1,11 @@
 import os
 import tempfile
 
-import h5py
+import pytest
+
 import numpy as np
+
+h5py = pytest.importorskip("h5py")
 
 
 def _make_h5(n=100, channels=10, samples=256):
