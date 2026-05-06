@@ -4,3 +4,4 @@ httpx>=0.27.0
 h5py
 scikit-learn
 seaborn
+PyYAML
