@@ -1,5 +1,8 @@
 # Seizure Detection from Real-Time EEG
 
+[![CI](https://github.com/NeuroRoy26/seizure-detection-real-time/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/NeuroRoy26/seizure-detection-real-time/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/github/NeuroRoy26/seizure-detection-real-time/graph/badge.svg?token=KIM3PCNSMP)](https://codecov.io/github/NeuroRoy26/seizure-detection-real-time)
+
 This repo is building toward a real-time seizure detection demo:
 
 - **FastAPI** backend that ingests “EEG” samples and serves the most recent sample plus a (currently dummy) seizure probability.
