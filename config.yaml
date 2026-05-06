@@ -1,0 +1,36 @@
+# ==========================================================
+# E2E SEIZURE DETECTION PIPELINE - MASTER CONFIGURATION
+# ==========================================================
+
+paths:
+  # The native Windows path pointing to your 14GB PhysioNet Dataset
+  local_data_dir: "D:\\Antigravity\\chb_seizure_pipeline\\dataset"
+  
+  # The path where the massive 6.7GB extraction writes to disk
+  hdf5_database_path: "D:\\Antigravity\\chb_seizure_pipeline\\train_database.h5"
+  
+  # The output path to seamlessly drop the deployment into the Streamlit folder
+  target_onnx_path: "D:\\Antigravity\\chb_seizure_pipeline\\seizure-detection-real-time\\latest.onnx"
+
+signal_processing:
+  # Size of the physiological chunks the AI "looks" at
+  window_sec: 2.0
+  
+  # Compressed sampling rate to drop massive dataset overhead
+  target_hz: 128.0
+  
+  # Number of hardware channels to evaluate and lock globally
+  top_n_channels: 10
+
+training:
+  # Batch chunks piped directly from NVMe to RAM 
+  batch_size: 64
+  
+  # Number of visualization sweeps the neural network performs
+  epochs: 20
+  
+  # The gradient penalty adjustment rate
+  learning_rate: 0.001
+  
+  # Percentage of data held strictly in the dark for clinical validation
+  test_split: 0.20
