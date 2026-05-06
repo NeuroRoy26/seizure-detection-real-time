@@ -306,7 +306,7 @@ In the notebook, run the auth cell (`auth.authenticate_user()`), then run the up
 
 This stable path is important: every retrain/upload overwrites the same object, so your app can keep using the same URL.
 
-### Step 3: model public (read-only)
+### Step 3: Make model public (read-only)
 
 You have two ways:
 
@@ -320,13 +320,13 @@ gcloud storage buckets add-iam-policy-binding gs://YOUR_BUCKET \
 
 - **Object-level ACL** (may be blocked if Public Access Prevention is enabled on the bucket).
 
-### Step 4: public URL
+### Step 4: Public URL
 
 For a bucket `YOUR_BUCKET` and object `models/latest.onnx`, the public URL is:
 
 - `https://storage.googleapis.com/YOUR_BUCKET/models/latest.onnx`
 
-### Step 5: backend to model URL
+### Step 5: Backend to model URL
 
 Run the backend with:
 
@@ -495,7 +495,7 @@ Notes:
 
 ### Local (non-Colab) export + upload helper
 
-If you want a local script version of the “export to ONNX + upload to GCS” step, use `export_and_upload_onnx.py`.
+For a local script version of the “export to ONNX + upload to GCS” step, use `export_and_upload_onnx.py`.
 
 Example:
 
