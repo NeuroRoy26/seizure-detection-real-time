@@ -277,7 +277,7 @@ If you see warnings about too many Matplotlib figures, the dashboard should be c
 
 This is the workflow that makes the portfolio demo “always run”.
 
-### Step 0: Know what the backend expects
+### Step 0: Backend expectations
 
 - **Model format**: ONNX (`latest.onnx`)
 - **Model input shape**: `(1, 10, 256)` where:
@@ -285,7 +285,7 @@ This is the workflow that makes the portfolio demo “always run”.
   - `256` = 2 seconds @ 128Hz
 - **Streaming sample rate**: set streamer to `--hz 128` so the backend accumulates one 2s window in ~2 seconds.
 
-### Step 1: Export ONNX in Colab
+### Step 1: ONNX in Colab
 
 Open `Seizure_Detection.ipynb` and run the cells that:
 
@@ -293,7 +293,7 @@ Open `Seizure_Detection.ipynb` and run the cells that:
 - **export to ONNX** (the notebook now writes):
   - `/content/drive/MyDrive/EEG_Seizure_Project/latest.onnx`
 
-### Step 2: Upload ONNX to GCS (stable path)
+### Step 2: ONNX to GCS (stable path)
 
 In the notebook, run the auth cell (`auth.authenticate_user()`), then run the upload cell that writes to:
 
@@ -301,7 +301,7 @@ In the notebook, run the auth cell (`auth.authenticate_user()`), then run the up
 
 This stable path is important: every retrain/upload overwrites the same object, so your app can keep using the same URL.
 
-### Step 3: Make the model public (read-only)
+### Step 3: model public (read-only)
 
 You have two ways:
 
@@ -315,13 +315,13 @@ gcloud storage buckets add-iam-policy-binding gs://YOUR_BUCKET \
 
 - **Object-level ACL** (may be blocked if Public Access Prevention is enabled on the bucket).
 
-### Step 4: Get the public URL
+### Step 4: public URL
 
 For a bucket `YOUR_BUCKET` and object `models/latest.onnx`, the public URL is:
 
 - `https://storage.googleapis.com/YOUR_BUCKET/models/latest.onnx`
 
-### Step 5: Point the backend at the model URL
+### Step 5: backend to model URL
 
 Run the backend with:
 
