@@ -5,3 +5,4 @@ requests
 streamlit
 matplotlib
 onnxruntime
+PyYAML
