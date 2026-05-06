@@ -64,3 +64,34 @@ def test_fetch_latest_returns_json(monkeypatch):
     monkeypatch.setattr(dashboard.requests, "get", lambda *args, **kwargs: FakeResponse())
     payload = dashboard._fetch_latest("http://example.test/latest", timeout_s=1.0)
     assert payload["seizure_probability"] == 0.2
+
+
+def test_init_state_sets_defaults(monkeypatch):
+    monkeypatch.setitem(sys.modules, "streamlit", _fake_streamlit())
+    dashboard = importlib.import_module("dashboard")
+    importlib.reload(dashboard)  # ensure clean session state for this module instance
+    dashboard._init_state()
+    assert dashboard.st.session_state["running"] is False
+    assert dashboard.st.session_state["buffer"] == []
+    assert dashboard.st.session_state["connection_status"] == "Disconnected"
+
+
+def test_trim_buffer_zero_max_len_clears(monkeypatch):
+    monkeypatch.setitem(sys.modules, "streamlit", _fake_streamlit())
+    dashboard = importlib.import_module("dashboard")
+    dashboard.st.session_state.buffer = [{"v": 1}, {"v": 2}]
+    dashboard._trim_buffer(max_len=0)
+    assert dashboard.st.session_state.buffer == []
+
+
+def test_plot_eeg_empty_buffer_does_not_raise(monkeypatch):
+    monkeypatch.setitem(sys.modules, "streamlit", _fake_streamlit())
+    dashboard = importlib.import_module("dashboard")
+    dashboard._plot_eeg([], channel_mode="Channel 1")
+
+
+def test_plot_eeg_single_channel(monkeypatch):
+    monkeypatch.setitem(sys.modules, "streamlit", _fake_streamlit())
+    dashboard = importlib.import_module("dashboard")
+    buffer = [{"data": [float(i)] * 23, "seizure_probability": 0.1} for i in range(5)]
+    dashboard._plot_eeg(buffer, channel_mode="Channel 3")
