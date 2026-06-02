@@ -5,3 +5,4 @@ artifacts/
 *.pt
 __pycache__/
 *.pyc
+datasets/
