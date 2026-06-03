@@ -1,0 +1,6 @@
+outs:
+- md5: 254de628604cb3ddb239af4bab5f63ed
+  size: 383644
+  hash: md5
+  path: latest.onnx
+  remote: s3-remote
