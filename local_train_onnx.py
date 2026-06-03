@@ -275,8 +275,9 @@ def main():
     model.export(str(SAVED_MODEL_DIR))
     print(f"[*] Base Graph wrapper safely deployed to: {SAVED_MODEL_DIR}")
 
+    import sys
     cmd = [
-        "python",
+        sys.executable,
         "-m",
         "tf2onnx.convert",
         "--saved-model",
