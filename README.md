@@ -88,13 +88,64 @@ Tests are organized under `tests/` by pipeline stage (`stage_01_*` through `stag
 
 ## Setup
 
-Create and activate a virtual environment, then install dependencies.
+### 1) Create Virtual Environment & Install Dependencies
+
+Create and activate a virtual environment, then install dependencies (including dev/pipeline tools if running local training or tests):
 
 ```bash
 python3 -m venv venv
+
+# On macOS/Linux:
 source venv/bin/activate
-pip install -r requirements.txt
+
+# On Windows (Command Prompt):
+venv\Scripts\activate
+
+# On Windows (PowerShell):
+# If script running is blocked, run: Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
+.\venv\Scripts\Activate.ps1
+
+pip install -r requirements.txt -r requirements-dev.txt
 ```
+
+### 2) Fetch Raw Datasets (DVC)
+
+The raw hospital recording datasets are version-controlled and stored in a Google Drive remote. To pull them locally:
+
+```bash
+dvc pull datasets.dvc
+# (Or on Windows without activation: .\venv\Scripts\dvc pull datasets.dvc)
+```
+
+#### Google Drive Authentication Setup
+
+Because Google has deprecated and blocked the default DVC OAuth application, you must use one of the two following methods to authenticate GDrive:
+
+##### Option A: Use a Custom OAuth App (Recommended for local/interactive runs)
+1. Go to the [Google Cloud Console](https://console.cloud.google.com/).
+2. Enable the **Google Drive API** for your project.
+3. Configure the **OAuth Consent Screen** (set to **External** user type).
+4. Add your personal Google email address to the **Test Users** list.
+5. Go to **Credentials > Create Credentials > OAuth client ID** and select **Desktop app**.
+6. Register the client ID and secret in your local DVC config (the `--local` flag prevents committing these secrets to git):
+   ```bash
+   dvc remote modify gdrive-remote gdrive_client_id "YOUR_CLIENT_ID" --local
+   dvc remote modify gdrive-remote gdrive_client_secret "YOUR_CLIENT_SECRET" --local
+   ```
+7. Re-run `dvc pull datasets.dvc`. In the browser authorization flow, click **Advanced > Go to [Your App] (unsafe)** to authenticate.
+
+##### Option B: Use a Service Account (Recommended for headless/automated runs)
+1. Go to the Google Cloud Console and create a **Service Account**.
+2. Create and download a **JSON Key** for it.
+3. Share the Google Drive dataset folder (`1ISmGMyjB40hIU9SKNKIfw9FWvyyKK2dh`) with the service account's email address (with Viewer/Editor access).
+4. Configure DVC to use the credentials file (use an absolute path or path relative to the repo root):
+   ```bash
+   dvc remote modify gdrive-remote gdrive_use_service_account true --local
+   dvc remote modify gdrive-remote gdrive_service_account_json_file_path "C:/Roy/Code/seizure-detection/seizure-detection-s-roy-e7a25ef47241.json" --local
+   ```
+5. Run `dvc pull datasets.dvc`.
+
+
 
 ---
 
@@ -398,11 +449,15 @@ curl -I "https://storage.googleapis.com/YOUR_BUCKET/models/latest.onnx"
 
 ### How It Works (Quick Summary)
 
+> [!NOTE]
+> Before running the ETL pipeline to build the database, make sure you have successfully pulled the raw dataset files from the remote via DVC using `dvc pull datasets.dvc` (see the **Setup** section above).
+
 **Step 1 — Build the database** (run once):
 ```bash
 python build_local_database.py
 ```
 Reads all 212 `.edf` hospital recordings + doctor's `*-summary.txt` notes. Applies notch & bandpass filters, slices into 2-second windows, labels each window as `0` (Normal) or `1` (Seizure), and writes everything to `train_database.h5`.
+
 
 **Step 2 — Train and export** (run when retraining):
 ```bash
