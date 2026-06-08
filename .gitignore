@@ -7,3 +7,10 @@ __pycache__/
 *.pyc
 datasets/
 /datasets
+/test_gdrive.txt
+mlflow.db
+mlruns/
+*.h5
+scratch/
+
+

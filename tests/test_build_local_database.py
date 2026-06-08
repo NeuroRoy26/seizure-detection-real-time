@@ -104,3 +104,46 @@ def test_main_skips_missing_summary(tmp_path):
 
         main()  # should not raise
 
+
+def test_normalize_channel_name():
+    from build_local_database import normalize_channel_name
+    assert normalize_channel_name("FP1-F7") == "FP1F7"
+    assert normalize_channel_name("FP1-F7.") == "FP1F7"
+    assert normalize_channel_name("FP1 F7") == "FP1F7"
+    assert normalize_channel_name("FP1-F7-Ref") == "FP1F7"
+
+
+def test_align_channels():
+    from build_local_database import align_channels
+    raw_names = ["FP1-F7", "F7-T7", "T7-P7", "FP1-F3-Ref"]
+    assert align_channels(raw_names, [0, 2]) == [0, 2]
+    assert align_channels(raw_names, ["FP1-F7", "FP1-F3"]) == [0, 3]
+
+    with pytest.raises(ValueError):
+        align_channels(raw_names, ["INVALID_CHANNEL"])
+
+
+def test_preprocess_and_window_under_sampling():
+    from build_local_database import preprocess_and_window
+    raw = _make_raw(n_channels=3, n_seconds=3000, sfreq=256.0)
+
+    # 1 seizure at 2000-2050s
+    X, y, meta = preprocess_and_window(
+        raw,
+        seizure_times=[(2000, 2050)],
+        best_indices=[0, 1],
+        target_hz=128,
+        win_sec=2,
+        sampling_config={"enabled": True, "negative_ratio": 2.0, "random_seed": 42},
+        return_meta=True,
+    )
+    # Seizure is 50s. At 2s window -> 25 positive windows.
+    # negative ratio = 2.0 -> 50 negative windows.
+    # Total windows = 75
+    assert len(y) == 75
+    assert np.sum(y == 1) == 25
+    assert np.sum(y == 0) == 50
+    assert len(meta["seizure_windows"]) == 25
+    assert len(meta["pre_ictal_windows"]) == 25
+    assert len(meta["baseline_windows"]) == 25
+
