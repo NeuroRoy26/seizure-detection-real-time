@@ -1,0 +1,14 @@
+========================================================
+ CHB-MIT EEG DATASET S3 KEEP MANIFEST
+========================================================
+
+This file lists all EDF files containing seizures that should
+be uploaded to S3, along with details of the seizure vs. normal windows.
+
+File: chb01/chb01_01.edf
+  Total seizure periods: 1
+    Seizure #1: 1 to 3 seconds
+  Window metadata not available (mocked preprocess).
+
+--------------------------------------------------------
+

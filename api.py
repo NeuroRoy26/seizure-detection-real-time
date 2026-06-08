@@ -3,10 +3,21 @@ from pydantic import BaseModel
 import numpy as np
 import os
 import time
+import yaml
 from typing import Optional, Tuple
 from collections import deque
 
 from model_fetch import download_if_needed
+
+# Load Master Configuration if present
+config = {}
+if os.path.exists("config.yaml"):
+    try:
+        with open("config.yaml", "r") as f:
+            config = yaml.safe_load(f)
+    except Exception:
+        pass
+
 
 app = FastAPI()
 
@@ -31,15 +42,16 @@ MODEL_LOCAL_PATH = os.environ.get("MODEL_LOCAL_PATH", "artifacts/model.onnx").st
 MODEL_REFRESH_SECONDS = _env_float("MODEL_REFRESH_SECONDS", 0.0)
 MODEL_HTTP_TIMEOUT_S = _env_float("MODEL_HTTP_TIMEOUT_S", 30.0)
 
-# Inference/windowing config (matches your notebook defaults)
-SFREQ_HZ = int(os.environ.get("SFREQ_HZ", "128"))
-WINDOW_SECONDS = float(os.environ.get("WINDOW_SECONDS", "2"))
+# Inference/windowing config (matches master config fallback)
+SFREQ_HZ = int(os.environ.get("SFREQ_HZ", str(int(config.get("signal_processing", {}).get("target_hz", 128)))))
+WINDOW_SECONDS = float(os.environ.get("WINDOW_SECONDS", str(config.get("signal_processing", {}).get("window_sec", 2.0))))
 WINDOW_SAMPLES = int(max(1, round(SFREQ_HZ * WINDOW_SECONDS)))
 INCOMING_CHANNELS = int(os.environ.get("INCOMING_CHANNELS", "23"))
 
 # Notebook logic: standardize to first 20 channels, then pick best 10 indices.
 STANDARDIZE_CHANNELS = int(os.environ.get("STANDARDIZE_CHANNELS", "20"))
-BEST_CHANNELS = [0, 1, 5, 2, 13, 18, 14, 8, 19, 16]
+BEST_CHANNELS = config.get("signal_processing", {}).get("best_indices", [0, 1, 5, 2, 13, 18, 14, 8, 19, 16])
+
 
 # Model state (kept in-memory)
 _model_last_loaded_at: Optional[float] = None

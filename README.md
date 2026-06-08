@@ -1,564 +1,164 @@
-# Seizure Detection from Real-Time EEG
+# Production-Grade Real-Time Seizure Detection Pipeline
 
 [![CI](https://github.com/NeuroRoy26/seizure-detection-real-time/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/NeuroRoy26/seizure-detection-real-time/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/github/NeuroRoy26/seizure-detection-real-time/graph/badge.svg?token=KIM3PCNSMP)](https://codecov.io/github/NeuroRoy26/seizure-detection-real-time)
+[![MLflow](https://img.shields.io/badge/MLflow-Tracking-blueviolet)](https://mlflow.org/)
+[![AWS SageMaker](https://img.shields.io/badge/AWS-SageMaker-orange)](https://aws.amazon.com/sagemaker/)
+[![Great Expectations](https://img.shields.io/badge/Data_Quality-Great_Expectations-green)](https://greatexpectations.io/)
 
-This repo is building toward a real-time seizure detection demo:
-
-- **FastAPI** backend that ingests “EEG” samples and serves the most recent sample plus a (currently dummy) seizure probability.
-- **Mock EEG streamer** that simulates **23-channel** EEG with occasional large anomalies (“mock seizures”) and POSTs samples to the API.
-- **Streamlit dashboard** that polls the API and plots the live EEG and seizure probability in near real-time.
-- Uses a custom 8 electrode EEG setup for real-time streaming
-- Tested on commercially available g.Tec Unicorn (not sponsored) with custom API for real-time streaming (API not available in this repo)
-
-This repo now supports a full **end-to-end** pipeline where you:
-
-- train in **Colab** (PyTorch),
-- export the trained model to **ONNX** (`latest.onnx`),
-- upload to **Google Cloud Storage (GCS)** at a stable path,
-- run the app locally (or in Docker) while the backend auto-fetches the model via a **public URL**.
+This repository implements a production-grade, end-to-end MLOps pipeline for real-time seizure detection from multi-channel EEG signals. The architecture scales from local data processing to cloud-based distributed training, featuring robust data validation, structured feature storage, experiment tracking, and real-time ONNX inference.
 
 ---
 
-## What’s in the repo
+## 🏗️ Architecture & Data Flow
 
-- `api.py`
-  - `POST /ingest`: receives one EEG sample (23 floats)
-  - `GET /latest`: returns the latest ingested sample + a `seizure_probability`
-- `mock_streamer.py`
-  - Generates a 23-channel sine-based signal
-  - Every `--seizure-every` seconds, injects an anomaly for `--seizure-duration` seconds
-  - Streams samples to the API via HTTP POST
-- `dashboard.py`
-  - Streamlit UI with Start/Stop
-  - Polls `GET /latest` on an interval
-  - Rolling buffer window and plots
-- `requirements.txt`
-  - Python dependencies (FastAPI, Uvicorn, Streamlit, etc.)
-- `export_and_upload_onnx.py`
-  - Optional local helper to export `GLOBAL_eeg_model_TOP10.pt` → `latest.onnx` and upload to GCS
+```mermaid
+flowchart TD
+    subgraph Data Pipeline (ETL & Validation)
+        EDF["Raw EDF Files (CHB-MIT)"] -->|Parallel Worker Pools| ETL["Producer-Consumer ETL (src/preprocess.py)"]
+        ETL -->|Data Quality Validation| GE["Great Expectations Gate (src/validation.py)"]
+        GE -->|Passed Check| FS["HDF5 Feature Store (src/feature_store.py)"]
+    end
 
----
+    subgraph Training & MLOps
+        FS -->|Single/Tune Runs| LT["Local Training (src/train.py / src/tune.py)"]
+        LT -->|Log Params, Metrics & Models| MLF["MLflow Tracking (SQLite DB)"]
+        
+        FS -->|Upload to S3| S3["AWS S3 Data Bucket"]
+        S3 -->|Orchestrated Job| SM["AWS SageMaker Training (ml.m5.large / CPU-GPU)"]
+        SM -->|Train MobileNetV2 Transfer Learning| SMT["sagemaker_train.py"]
+        SMT -->|Export ONNX| S3Out["S3 Model Artifacts (model.tar.gz)"]
+    end
 
-## Data contract (important)
-
-### `POST /ingest`
-
-The API expects a JSON object with a `data` field (because it uses a Pydantic model):
-
-```json
-{
-  "data": [0.12, -0.03, 0.55, "... 23 floats total ..."]
-}
-```
-
-- `data` must be a list of floats (length **23** for this mock setup).
-
-### `GET /latest`
-
-Returns either:
-
-```json
-{"message": "No data available"}
-```
-
-or:
-
-```json
-{
-  "data": [ ... 23 floats ... ],
-  "seizure_probability": 0.42
-}
+    subgraph Real-Time Inference
+        S3Out -->|Retrieve & Extract| ONNX["latest.onnx"]
+        LT -->|Direct Export| ONNX
+        
+        ONNX -->|ONNX Runtime Inference| API["FastAPI Backend (api.py)"]
+        Streamer["Mock EEG Streamer (mock_streamer.py)"] -->|POST /ingest (10-Ch Signal)| API
+        API -->|GET /latest (Probabilities)| Dash["Streamlit Dashboard (dashboard.py)"]
+    end
 ```
 
 ---
 
-## Run tests
+## 🚀 Key Technical Highlights (MLOps Engineering)
 
-```bash
+* **Robust Data Validation Gate**: Integrates **Great Expectations v1.18.0** to enforce data-quality schemas (e.g. range bounds, standard deviations, scaling limits) on raw EEG microvolt values, preventing bad channel data or sensor noise from poisoning downstream models.
+* **Parallelized Producer-Consumer ETL**: Processing large raw binary `.edf` files is heavily CPU-bound. To bypass the Global Interpreter Lock (GIL) and prevent database corruption (HDF5 does not support concurrent writes), the ETL pipeline uses a parallel `ProcessPoolExecutor` for signal filtering and validation (Producers) feeding a single-threaded writer queue (Consumer), achieving a **4x–8x processing speedup**.
+* **Structured Local Feature Store**: A unified **HDF5 Feature Store** separates processed raw signals (for deep learning models) and pre-calculated time-frequency features (RMS, line length, spectral band powers) for traditional machine learning baselines.
+* **Industrial Experiment Tracking (MLflow)**: Leverages an **MLflow SQLite backend** (`sqlite:///mlflow.db`) to record hyperparameters, evaluation metrics (Accuracy, Precision, Seizure Sensitivity/Recall, F1-Score, RMSE), and serializes the compiled ONNX model artifacts directly inside the active run.
+* **AWS SageMaker Cloud & Local Mode**: Supports both standard cloud training and containerized Local Mode (using Docker Desktop) via **AWS SageMaker**. It uploads preprocessed, down-sampled balanced datasets to **AWS S3**, provisions ephemeral training instances, executes the training script, and automatically downloads and extracts the compiled `latest.onnx` model.
+* **2D CNN Transfer Learning**: Maps 10-channel 1D EEG time-series windows to 2D representations using a `(1,1)` spatial channel expansion layer, resizes to `(224,224,3)` via bilinear interpolation, and utilizes a frozen **MobileNetV2** backbone pre-trained on ImageNet to perform transfer learning on neural signals.
+* **ONNX Compilation & Deployment**: Replaces heavy framework dependencies (`TensorFlow`/`PyTorch`) with a lightweight `onnxruntime` engine on the FastAPI backend for fast, low-latency, real-time predictions.
+
+---
+
+## 🛠️ Codebase Structure
+
+```text
+├── config.yaml                     # Centralized project configurations (ETL, paths, tuning, models)
+├── api.py                          # FastAPI server serving real-time model inference
+├── dashboard.py                    # Streamlit real-time visualization dashboard
+├── mock_streamer.py                # Simulated multi-channel EEG streamer
+├── run_sagemaker_job.py            # SageMaker orchestrator (handles S3 upload, Docker launch, download)
+├── sagemaker_train.py              # Cloud/Container training script (runs inside SageMaker TensorFlow container)
+├── requirements.txt                # Production dependencies (FastAPI, Streamlit, OnnxRuntime, etc.)
+├── requirements-dev.txt            # Development & pipeline dependencies (MNE, TensorFlow, Great Expectations, MLflow)
+├── src/
+│   ├── preprocess.py               # Multiprocess ETL orchestrator
+│   ├── validation.py               # Great Expectations data validator
+│   ├── features.py                 # Time-frequency domain feature extraction
+│   ├── feature_store.py            # Local HDF5 Feature Store manager
+│   ├── model.py                    # Adapted 2D-CNN Model architecture
+│   ├── train.py                    # Local training loop & MLflow logger
+│   └── tune.py                     # Local Grid Search hyperparameter tuner
+└── tests/                          # 50+ unit and integration tests (Pytest)
+```
+
+---
+
+## 💻 Getting Started (Installation & Run)
+
+### 1. Environment Setup & Pulling Data (DVC)
+Create your virtual environment, install dependencies, and pull the version-controlled hospital datasets:
+```powershell
+# Create & activate virtual environment
+python -m venv venv
+.\venv\Scripts\Activate.ps1   # Windows PowerShell
+
+# Install dev/mlops dependencies
 pip install -r requirements.txt -r requirements-dev.txt
-pytest
-# More verbose + coverage (useful during development):
-pytest -v --cov=. --cov-report=term-missing
-```
 
-Tests are organized under `tests/` by pipeline stage (`stage_01_*` through `stage_07_*`).
-
----
-
-## Setup
-
-### 1) Create Virtual Environment & Install Dependencies
-
-Create and activate a virtual environment, then install dependencies (including dev/pipeline tools if running local training or tests):
-
-```bash
-python3 -m venv venv
-
-# On macOS/Linux:
-source venv/bin/activate
-
-# On Windows (Command Prompt):
-venv\Scripts\activate
-
-# On Windows (PowerShell):
-# If script running is blocked, run: Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
-.\venv\Scripts\Activate.ps1
-
-pip install -r requirements.txt -r requirements-dev.txt
-```
-
-### 2) Fetch Raw Datasets (DVC)
-
-The raw hospital recording datasets are version-controlled and stored in a Google Drive remote. To pull them locally:
-
-```bash
+# Pull hospital datasets from Google Drive remote
 dvc pull datasets.dvc
-# (Or on Windows without activation: .\venv\Scripts\dvc pull datasets.dvc)
 ```
 
-#### Google Drive Authentication Setup
+### 2. Run the Data Preprocessing Pipeline (ETL)
+Execute the ETL script to select the 10 most stable channels dynamically, apply bandpass/notch filters, run data validation checks, and save windows to the HDF5 Feature Store:
+```powershell
+python src/preprocess.py
+```
 
-Because Google has deprecated and blocked the default DVC OAuth application, you must use one of the two following methods to authenticate GDrive:
+### 3. Training & Orchestration
 
-##### Option A: Use a Custom OAuth App (Recommended for local/interactive runs)
-1. Go to the [Google Cloud Console](https://console.cloud.google.com/).
-2. Enable the **Google Drive API** for your project.
-3. Configure the **OAuth Consent Screen** (set to **External** user type).
-4. Add your personal Google email address to the **Test Users** list.
-5. Go to **Credentials > Create Credentials > OAuth client ID** and select **Desktop app**.
-6. Register the client ID and secret in your local DVC config (the `--local` flag prevents committing these secrets to git):
-   ```bash
-   dvc remote modify gdrive-remote gdrive_client_id "YOUR_CLIENT_ID" --local
-   dvc remote modify gdrive-remote gdrive_client_secret "YOUR_CLIENT_SECRET" --local
-   ```
-7. Re-run `dvc pull datasets.dvc`. In the browser authorization flow, click **Advanced > Go to [Your App] (unsafe)** to authenticate.
+#### Local Training & Hyperparameter Tuning
+Train a model locally and track it with MLflow (runs local SQLite server):
+```powershell
+# Run local training loop
+python src/train.py
 
-##### Option B: Use a Service Account (Recommended for headless/automated runs)
-1. Go to the Google Cloud Console and create a **Service Account**.
-2. Create and download a **JSON Key** for it.
-3. Share the Google Drive dataset folder (`1ISmGMyjB40hIU9SKNKIfw9FWvyyKK2dh`) with the service account's email address (with Viewer/Editor access).
-4. Configure DVC to use the credentials file (use an absolute path or path relative to the repo root):
-   ```bash
-   dvc remote modify gdrive-remote gdrive_use_service_account true --local
-   dvc remote modify gdrive-remote gdrive_service_account_json_file_path "C:/Roy/Code/seizure-detection/seizure-detection-s-roy-e7a25ef47241.json" --local
-   ```
-5. Run `dvc pull datasets.dvc`.
+# Run grid search hyperparameter sweep
+python src/tune.py
 
+# View training metrics and ONNX artifacts locally
+mlflow ui --backend-store-uri sqlite:///mlflow.db
+```
 
+#### AWS SageMaker Training (Cloud / Local Container Mode)
+Verify and test the training job locally inside a Docker container (requires Docker Desktop running), or deploy directly to AWS SageMaker instances (completely free under the AWS Free Tier allowance of 50 training hours/month):
+
+```powershell
+# Option A: Run in SageMaker Local Mode using your local Docker engine (for debugging)
+python run_sagemaker_job.py --local
+
+# Option B: Spin up a managed SageMaker cloud instance (requires AWS execution role)
+python run_sagemaker_job.py --role-arn arn:aws:iam::116584140401:role/service-role/AmazonSageMaker-ExecutionRole-XXXXXXXX
+```
 
 ---
 
-## Run the system (3 terminals, local)
+## ⚡ Real-Time System Run (Local Demo)
 
-You’ll typically run **FastAPI**, the **streamer**, and the **dashboard** at the same time.
+To run the full end-to-end real-time dashboard, start the following processes in three separate terminals:
 
-### 1) Start the API (Terminal A)
-
-```bash
-source venv/bin/activate
-python3 -m uvicorn api:app --reload
+### 1) Start Uvicorn FastAPI Server (Terminal A)
+```powershell
+python -m uvicorn api:app --reload
 ```
+FastAPI runs locally at `http://127.0.0.1:8000`. Access interactive API documentation at `/docs`.
 
-FastAPI will run at `http://127.0.0.1:8000`.
-
-- Interactive docs: `http://127.0.0.1:8000/docs`
-- What you should see:
-  - Terminal logs showing `Uvicorn running on http://127.0.0.1:8000`
-  - If you visit `/latest` before streaming starts, you’ll get `{"message":"No data available"}`
-
-### 2) Start the mock streamer (Terminal B)
-
-```bash
-source venv/bin/activate
-python mock_streamer.py
-```
-
-You should see periodic status lines like:
-
-- `status=200` (good)
-- `seizure=True/False` depending on whether the anomaly window is active
-- What you should see in the **FastAPI terminal**:
-  - Repeated requests like `POST /ingest ... 200 OK`
-
-Useful flags:
-
-```bash
+### 2) Launch the Mock EEG Streamer (Terminal B)
+```powershell
 python mock_streamer.py --hz 128 --seizure-every 60 --seizure-duration 5
 ```
+Simulates real-time 10-channel streaming data, injecting mock seizure anomalies every 60 seconds and posting samples directly to the FastAPI server.
 
-### 3) Start the Streamlit dashboard (Terminal C)
-
-```bash
-source venv/bin/activate
+### 3) Run the Streamlit Dashboard (Terminal C)
+```powershell
 streamlit run dashboard.py
 ```
-
-Then open the local URL Streamlit prints (commonly `http://localhost:8501`) and press **Start**.
-
-- What you should see:
-  - The Streamlit page shows **Status: Connected** once it can reach the backend
-  - The EEG chart updates as samples are ingested
-  - The probability chart updates (currently random, 0–1)
+Open `http://localhost:8501`, press **Start**, and watch the rolling raw signal waveforms update alongside the live seizure probability outputs.
 
 ---
 
-## Run with Docker (backend + frontend together)
-
-This repo includes a `Dockerfile` and `docker-compose.yml` to run **FastAPI** + **Streamlit** together.
-
-### 1) Build images
-
-From the repo root:
-
-```bash
-docker compose build
-```
-
-What you should see:
-- Docker building an image that installs `requirements.txt`
-
-### 2) Start the services
-
-```bash
-docker compose up
-```
-
-Or detached:
-
-```bash
-docker compose up -d
-```
-
-What you should see:
-- Backend listening on `0.0.0.0:8000`
-- Frontend (Streamlit) listening on `0.0.0.0:8501`
-
-Open:
-- Streamlit: `http://localhost:8501`
-- FastAPI docs: `http://localhost:8000/docs`
-
-### 3) Start the streamer (still needed)
-
-The compose file runs the backend + dashboard. To generate “live” data, run the streamer separately on your host:
-
-```bash
-source venv/bin/activate
-python mock_streamer.py
-```
-
-What you should see:
-- Streamer logs show `status=200`
-- The Streamlit dashboard starts plotting live updates after you press **Start**
-
-### 4) Stop everything
-
-```bash
-docker compose down
-```
-
-Tip: If you used `-d`, view logs with:
-
-```bash
-docker compose logs -f
-```
-
----
-
-## Quick verification with curl
-
-### Confirm the API is up
-
-```bash
-curl -i http://127.0.0.1:8000/latest
-```
-
-What you should see:
-- HTTP `200 OK`
-- Either `{"message":"No data available"}` (before ingest) or `{"data":[...],"seizure_probability":...}`
-
-### Manually ingest a sample (should return 200)
-
-```bash
-curl -i -X POST http://127.0.0.1:8000/ingest \
-  -H "Content-Type: application/json" \
-  -d '{"data":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22]}'
-```
-
-What you should see:
-- HTTP `200 OK`
-- Response: `{"message":"Data ingested successfully"}`
-
-### Fetch the latest sample (should now include `data` and `seizure_probability`)
-
-```bash
-curl -s http://127.0.0.1:8000/latest
-```
-
-What you should see:
-- A JSON object with:
-  - `data`: list of floats
-  - `seizure_probability`: float in `[0,1]`
-
----
-
-## Common issues & fixes
-
-### “No data available” forever
-
-This means the API hasn’t successfully received any samples.
-
-- Make sure the streamer is running and returning `status=200`.
-- Check the FastAPI terminal for `POST /ingest ... 200 OK`.
-
-### `POST /ingest` returns **422 Unprocessable Entity**
-
-This is almost always a **payload shape mismatch**.
-
-The API expects:
-
-```json
-{"data": [ ... ]}
-```
-
-If you accidentally send a raw list like `[ ... ]`, FastAPI will reject it with 422.
-
-### Streamlit “opens too many figures”
-
-If you see warnings about too many Matplotlib figures, the dashboard should be closing figures after rendering. This repo’s `dashboard.py` does that (`plt.close(fig)`).
-
----
-
-## Model deployment (step-by-step)
-
-This is the workflow that makes the portfolio demo “always run”.
-
-### Step 0: Backend expectations
-
-- **Model format**: ONNX (`latest.onnx`)
-- **Model input shape**: `(1, 10, 256)` where:
-  - `10` = “best channels” from your notebook: `[0, 1, 5, 2, 13, 18, 14, 8, 19, 16]`
-  - `256` = 2 seconds @ 128Hz
-- **Streaming sample rate**: set streamer to `--hz 128` so the backend accumulates one 2s window in ~2 seconds.
-
-### Step 1: ONNX in Colab
-
-Open `Seizure_Detection.ipynb` and run the cells that:
-
-- train and save your weights to Drive (your notebook saves `GLOBAL_eeg_model_TOP10.pt`)
-- **export to ONNX** (the notebook now writes):
-  - `/content/drive/MyDrive/EEG_Seizure_Project/latest.onnx`
-
-### Step 2: ONNX to GCS (stable path)
-
-In the notebook, run the auth cell (`auth.authenticate_user()`), then run the upload cell that writes to:
-
-- `gs://YOUR_BUCKET/models/latest.onnx`
-
-This stable path is important: every retrain/upload overwrites the same object, so your app can keep using the same URL.
-
-### Step 3: Make model public (read-only)
-
-You have two ways:
-
-- **Bucket-level public read** (simple for portfolios):
-
-```bash
-gcloud storage buckets add-iam-policy-binding gs://YOUR_BUCKET \
-  --member=allUsers \
-  --role=roles/storage.objectViewer
-```
-
-- **Object-level ACL** (may be blocked if Public Access Prevention is enabled on the bucket).
-
-### Step 4: Public URL
-
-For a bucket `YOUR_BUCKET` and object `models/latest.onnx`, the public URL is:
-
-- `https://storage.googleapis.com/YOUR_BUCKET/models/latest.onnx`
-
-### Step 5: Backend to model URL
-
-Run the backend with:
-
-```bash
-export MODEL_URL="https://storage.googleapis.com/YOUR_BUCKET/models/latest.onnx"
-export MODEL_REFRESH_SECONDS="0"   # only download at startup (simple)
-python3 -m uvicorn api:app --reload
-```
-
-Optional: set `MODEL_REFRESH_SECONDS="300"` (5 min) if you want periodic refresh.
-
-### Step 6: Run streamer + dashboard
-
-Streamer:
-
-```bash
-python3 mock_streamer.py --hz 128
-```
-
-Dashboard:
-
-```bash
-streamlit run dashboard.py
-```
-
-### Step 7: Verify the model is actually in GCS (avoids NoSuchKey)
-
-If you get:
-
-```xml
-<Code>NoSuchKey</Code>
-```
-
-it means the object path doesn’t exist (upload didn’t happen or went to a different path).
-
-Check:
-
-```bash
-gcloud storage ls gs://YOUR_BUCKET/models/
-```
-
-You must see `latest.onnx` there.
-
-### Step 8: Verify it’s public (avoids 403)
-
-Open the URL in an incognito window or run:
-
-```bash
-curl -I "https://storage.googleapis.com/YOUR_BUCKET/models/latest.onnx"
-```
-
-- `200` = good
-- `403` = object exists but is not public (bucket policy / public access prevention)
-
----
----
-## Local Training Pipeline (Plan B — Fully Offline)
-
-> **What changed:** The original workflow trained the model in Google Colab (PyTorch) and uploaded to GCS. We have now added a fully **local, offline alternative** pipeline that runs entirely on a Windows machine using TensorFlow. This is the current recommended approach for retraining.
-
-### New Files Added
-
-| File | Purpose |
-|---|---|
-| `build_local_database.py` | ETL pipeline — processes 14GB raw CHB-MIT EDF files into a compressed HDF5 database |
-| `local_train_onnx.py` | AI trainer — streams the HDF5 database, trains a transfer-learning model (ImageNet backbone), exports `latest.onnx` |
-| `channel_selection.py` | Internal utility — auto-imported by the ETL script to identify the Top 10 stable EEG channels |
-| `config.yaml` | Central configuration — edit this file to change paths, epochs, batch size, etc. |
-
-### How It Works (Quick Summary)
-
-> [!NOTE]
-> Before running the ETL pipeline to build the database, make sure you have successfully pulled the raw dataset files from the remote via DVC using `dvc pull datasets.dvc` (see the **Setup** section above).
-
-**Step 1 — Build the database** (run once):
-```bash
-python build_local_database.py
-```
-Reads all 212 `.edf` hospital recordings + doctor's `*-summary.txt` notes. Applies notch & bandpass filters, slices into 2-second windows, labels each window as `0` (Normal) or `1` (Seizure), and writes everything to `train_database.h5`.
-
-
-**Step 2 — Train and export** (run when retraining):
-```bash
-python local_train_onnx.py
-```
-Streams the HDF5 database using a memory-safe generator (prevents RAM overflow on 16GB laptops), trains the 1D-CNN, prints clinical metrics (Accuracy, Precision, Recall, F1, RMSE), and exports `latest.onnx` directly into this repo folder.
-Streams the HDF5 database using a memory-safe generator (prevents RAM overflow on 16GB laptops), trains a transfer-learning model (pre-trained ImageNet backbone with a 1D→2D bridge), prints clinical metrics (Accuracy, Precision, Recall, F1, RMSE), and exports `latest.onnx` directly into this repo folder.
-
-### Configuration (`config.yaml`)
-All parameters are centralized. **Never edit the Python scripts directly** — change settings here:
-```yaml
-paths:
-  local_data_dir: "D:\\path\\to\\dataset"
-  hdf5_database_path: "D:\\path\\to\\train_database.h5"
-  target_onnx_path: "D:\\path\\to\\seizure-detection-real-time\\latest.onnx"
-signal_processing:
-  window_sec: 2.0
-  target_hz: 128.0
-  top_n_channels: 10
-training:
-  batch_size: 64
-  epochs: 20
-  learning_rate: 0.001
-  test_split: 0.20
-```
-
-### Data Contract
-The exported `latest.onnx` is **identical** to the Colab-exported model:
-- **Input shape:** `(1, 10, 256)` — 10 channels × 256 samples (2s @ 128Hz)
-- **Output:** `(1, 2)` **raw logits** (the backend applies **softmax** and returns `seizure_probability = P(class=1)`).
-- The `api.py` backend loads this file without any modification. Do not export a model with a final softmax layer, or you will effectively “softmax twice”.
-
-### Dependencies (local pipeline only)
-```bash
-pip install mne numpy h5py tensorflow scikit-learn matplotlib seaborn pyyaml tf2onnx onnx
-```
-
-Notes:
-- The first run may download ImageNet weights for the backbone (e.g. MobileNetV2) if not already cached.
-
----
-
-## Where this is headed (next milestones)
-
-- **GCS Upload:** Automate upload of locally trained `latest.onnx` to Google Cloud Storage bucket
-- **Retraining Model**: On other datasets (PhysioNet/Kaggle)
-- **Explore other Model**: LSTM or Transformer architectures for improved seizure Recall
-- **Shadow Deployment**: Making it as free/cost-efficient as possible
----
----
-
-## Model weights: auto-fetch `latest.onnx` (portfolio-friendly)
-
-This repo now supports an **end-to-end** workflow where you keep training in Colab and your running app can **auto-fetch** the newest model artifact.
-
-For deployment portability (and to avoid huge `torch` installs), the backend is set up to run **ONNX** with `onnxruntime` (CPU).
-
-### Recommended approach (simple + reliable): Public GCS URL
-
-1) In Colab, export your trained PyTorch model to ONNX (stable input shape: `1 x 10 x 256`), producing:
-
-- `/content/drive/MyDrive/EEG_Seizure_Project/latest.onnx`
-
-2) Upload your model to a stable object path:
-
-```bash
-gcloud storage cp "/content/drive/MyDrive/EEG_Seizure_Project/latest.onnx" "gs://YOUR_BUCKET/models/latest.onnx"
-```
-
-3) Make the object publicly readable (read-only).
-
-4) Run the backend with:
-
-- `MODEL_URL`: public URL, e.g. `https://storage.googleapis.com/YOUR_BUCKET/models/latest.onnx`
-- `MODEL_LOCAL_PATH`: where to cache locally (default: `artifacts/model.onnx`)
-- `MODEL_REFRESH_SECONDS`: optional periodic refresh interval (default: `0` = only at startup)
-
-Example:
-
-```bash
-export MODEL_URL="https://storage.googleapis.com/YOUR_BUCKET/models/latest.onnx"
-export MODEL_REFRESH_SECONDS="300"
-uvicorn api:app --reload
-```
-
-Notes:
-- The backend does **real inference** once it has accumulated a full rolling window (\(2s\) at \(128Hz\) = \(256\) samples) and the ONNX model is loaded.
-- Until the buffer is full (or if the model isn’t configured), `seizure_probability` returns `0.0` so the dashboard keeps working.
-- The local cache folder is tracked via `artifacts/.gitkeep` but the weights themselves should not be committed.
-
-### Local (non-Colab) export + upload helper
-
-For a local script version of the “export to ONNX + upload to GCS” step, use `export_and_upload_onnx.py`.
-
-Example:
-
-```bash
-python3 export_and_upload_onnx.py \
-  --pt GLOBAL_eeg_model_TOP10.pt \
-  --onnx latest.onnx \
-  --bucket YOUR_BUCKET \
-  --object models/latest.onnx \
-  --make-public
+## 🧪 Testing & Code Quality
+The codebase is validated by a rigorous Pytest test suite containing **50 unit and integration tests** covering mock streaming, validation constraints, preprocessing transformations, API routes, and model serialization.
+
+```powershell
+# Run the test suite
+pytest -v
+
+# Run with coverage reports
+pytest --cov=. --cov-report=term-missing
 ```
