@@ -5,3 +5,8 @@ h5py
 scikit-learn
 seaborn
 PyYAML
+great_expectations
+mne
+tensorflow
+mlflow
+tf2onnx
