@@ -116,15 +116,40 @@ mlflow ui --backend-store-uri sqlite:///mlflow.db
 ```
 
 #### AWS SageMaker Training (Cloud / Local Container Mode)
-Verify and test the training job locally inside a Docker container (requires Docker Desktop running), or deploy directly to AWS SageMaker instances (completely free under the AWS Free Tier allowance of 50 training hours/month):
+Validate your containerized training scripts locally inside a Docker container using SageMaker Local Mode, or scale out to managed cloud instances. The orchestration pipeline:
+* Programmatically uploads the local down-sampled balanced dataset (`train_database.h5`) to S3.
+* Pulls the official SageMaker TensorFlow deep learning container.
+* Overcomes dynamic container library mismatches (e.g., pinning `onnx<1.16.0` and `ml-dtypes==0.2.0` at runtime to ensure compatibility with TensorFlow 2.14).
+* Automatically downloads the finished `model.tar.gz` archive, normalizes S3 paths (handling Windows backslash variations), extracts the compiled ONNX model, and deploys it back to your stable S3 path.
 
 ```powershell
-# Option A: Run in SageMaker Local Mode using your local Docker engine (for debugging)
+# Run in SageMaker Local Mode using your local Docker engine (for local debugging/verification)
 python run_sagemaker_job.py --local
 
-# Option B: Spin up a managed SageMaker cloud instance (requires AWS execution role)
+# Spin up a managed SageMaker cloud instance (ml.m5.large or GPU instances)
 python run_sagemaker_job.py --role-arn arn:aws:iam::116584140401:role/service-role/AmazonSageMaker-ExecutionRole-XXXXXXXX
 ```
+
+---
+
+## ☁️ Cloud & Distributed Training (Databricks & Google Colab)
+
+To demonstrate enterprise-scale readiness, the training pipeline is fully adapted to run on cloud platforms for both lightweight verification and large-scale GPU training:
+
+### 1. Databricks Verification Loop (S3 Integration)
+* **Purpose:** Runs cluster-level model compilation and training validation on shared CPU/GPU nodes.
+* **Architecture:** The notebook connects directly to AWS S3 using boto3, downloads the preprocessed `train_database.h5` dataset to cluster-local scratch space, compiles the 2D-CNN transfer learning graph, and executes a 1-epoch validation run.
+* **Verify Live Work:** You can inspect the fully executed notebook directly in the cloud here: [Databricks Verification Notebook Link](https://dbc-da5959a3-d9cb.cloud.databricks.com/editor/notebooks/3300191887270562?o=7474657888742618)
+* **Bypassing Cluster Overrides:** The notebook is configured with system-level `!pip` overrides to bypass Databricks CONNECT environment sync issues.
+
+### 2. Google Colab Training (Free T4 GPU Acceleration)
+* **Purpose:** Handles hyperparameter sweeps and heavy production model training (e.g., 200 epochs) utilizing free high-performance NVIDIA Tesla T4 GPUs.
+* **Workflow:**
+  1. Mounts Google Drive and copies the 2D HDF5 dataset (`train_database_2d.h5`) to Colab's local SSD to prevent cloud drive latency during training batches.
+  2. Integrates with **DAGsHub & MLflow** to log parameters, metrics, and ONNX models remotely.
+  3. Executes grid search hyperparameter sweeps (`src/tune.py`) and saves the best model.
+  4. Runs the final 20-epoch production model (`src/train.py`) and copies the output ONNX model back to your Google Drive and AWS S3 bucket securely using interactive credentials.
+* **Notebook File:** [colab_training.ipynb](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/colab_training.ipynb)
 
 ---
 
