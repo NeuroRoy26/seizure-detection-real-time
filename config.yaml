@@ -26,7 +26,7 @@ signal_processing:
   window_sec: 2.0
 training:
   batch_size: 256
-  epochs: 3
+  epochs: 1
   learning_rate: 0.001
   test_split: 0.2
   
