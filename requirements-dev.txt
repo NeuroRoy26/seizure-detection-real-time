@@ -10,3 +10,4 @@ mne
 tensorflow
 mlflow
 tf2onnx
+boto3
