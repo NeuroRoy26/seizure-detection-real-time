@@ -52,6 +52,16 @@ class HDF5SignalGenerator(Sequence):
         self.h5_path = h5_path
         self.indices = indices
         self.batch_size = batch_size
+        
+        # Load expected signal length from config.yaml dynamically
+        try:
+            with open("config.yaml", "r") as f:
+                cfg = yaml.safe_load(f)
+            self.expected_samples = int(
+                cfg["signal_processing"]["target_hz"] * cfg["signal_processing"]["window_sec"]
+            )
+        except Exception:
+            self.expected_samples = 256  # Fallback to standard 2-sec @ 128Hz
 
     def __len__(self) -> int:
         return int(np.ceil(len(self.indices) / float(self.batch_size)))
@@ -64,7 +74,11 @@ class HDF5SignalGenerator(Sequence):
             X_batch = h5f['raw_signals/X'][sorted_idx]
             y_batch = h5f['raw_signals/y'][sorted_idx]
             
-        # Add channel dimension for Conv2D: shape (batch_size, 10, 256, 1)
+        # Dynamically slice or pad if the HDF5 has a different window size
+        if X_batch.shape[2] != self.expected_samples:
+            X_batch = X_batch[:, :, :self.expected_samples]
+            
+        # Add channel dimension for Conv2D: shape (batch_size, 10, expected_samples, 1)
         X_batch = np.expand_dims(X_batch, axis=-1)
         return X_batch, y_batch
 

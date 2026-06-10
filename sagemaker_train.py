@@ -210,10 +210,10 @@ def main():
         print("tf2onnx not found. Installing via pip...")
         import subprocess
         import sys
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "tf2onnx"])
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "tf2onnx", "onnx<1.16.0", "ml-dtypes==0.2.0"])
         import tf2onnx
 
-    target_onnx_path = os.path.join(args.model_dir, "latest.onnx")
+    target_onnx_path = os.path.join(args.model_dir, "seizure_detector_mobilenetv2.onnx")
     print(f"Exporting model to ONNX: {target_onnx_path}")
     
     # Convert directly using python API (avoiding subprocess SavedModel step)

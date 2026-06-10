@@ -22,7 +22,7 @@ def test_main_raises_when_pt_missing(monkeypatch, tmp_path):
 
 def test_main_exports_and_uploads_when_bucket_provided(monkeypatch, tmp_path):
     pt_path = tmp_path / "model.pt"
-    onnx_path = tmp_path / "latest.onnx"
+    onnx_path = tmp_path / "seizure_detector_mobilenetv2.onnx"
     pt_path.write_bytes(b"weights")
 
     export_calls = []
@@ -41,11 +41,11 @@ def test_main_exports_and_uploads_when_bucket_provided(monkeypatch, tmp_path):
             "--bucket",
             "my-bucket",
             "--object",
-            "models/latest.onnx",
+            "models/seizure_detector_mobilenetv2.onnx",
         ],
     )
 
     exporter.main()
 
     assert len(export_calls) == 1
-    assert run_calls == [["gcloud", "storage", "cp", str(onnx_path.resolve()), "gs://my-bucket/models/latest.onnx"]]
+    assert run_calls == [["gcloud", "storage", "cp", str(onnx_path.resolve()), "gs://my-bucket/models/seizure_detector_mobilenetv2.onnx"]]
