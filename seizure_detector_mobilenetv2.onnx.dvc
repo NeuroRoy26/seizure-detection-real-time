@@ -2,5 +2,5 @@ outs:
 - md5: 254de628604cb3ddb239af4bab5f63ed
   size: 383644
   hash: md5
-  path: latest.onnx
+  path: seizure_detector_mobilenetv2.onnx
   remote: s3-remote

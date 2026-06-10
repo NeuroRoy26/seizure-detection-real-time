@@ -4,8 +4,8 @@ Local helper to export your trained EEGNet1D PyTorch weights (.pt) to ONNX and (
 This mirrors the last “export + upload” steps from `Seizure_Detection.ipynb`, but without Colab/Drive paths.
 
 Usage examples:
-  python3 export_and_upload_onnx.py --pt GLOBAL_eeg_model_TOP10.pt --onnx latest.onnx
-  python3 export_and_upload_onnx.py --pt GLOBAL_eeg_model_TOP10.pt --onnx latest.onnx --bucket seizurebucket --object models/latest.onnx --make-public
+  python3 export_and_upload_onnx.py --pt GLOBAL_eeg_model_TOP10.pt --onnx seizure_detector_mobilenetv2.onnx
+  python3 export_and_upload_onnx.py --pt GLOBAL_eeg_model_TOP10.pt --onnx seizure_detector_mobilenetv2.onnx --bucket seizurebucket --object models/seizure_detector_mobilenetv2.onnx --make-public
 
 Notes:
   - Export requires PyTorch installed locally.
@@ -72,9 +72,9 @@ def export_onnx(pt_path: Path, onnx_path: Path) -> None:
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--pt", required=True, help="Path to GLOBAL_eeg_model_TOP10.pt (state_dict)")
-    p.add_argument("--onnx", required=True, help="Output ONNX path, e.g. latest.onnx")
+    p.add_argument("--onnx", required=True, help="Output ONNX path, e.g. seizure_detector_mobilenetv2.onnx")
     p.add_argument("--bucket", default="", help="GCS bucket name, e.g. seizurebucket")
-    p.add_argument("--object", dest="object_path", default="models/latest.onnx", help="GCS object path")
+    p.add_argument("--object", dest="object_path", default="models/seizure_detector_mobilenetv2.onnx", help="GCS object path")
     p.add_argument("--make-public", action="store_true", help="Attempt to make object publicly readable")
     args = p.parse_args()
 

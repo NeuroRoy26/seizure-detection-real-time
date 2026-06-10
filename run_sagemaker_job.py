@@ -11,6 +11,13 @@ and extracts the final latest.onnx model from the SageMaker model artifact.
 
 import os
 import sys
+import io
+
+if sys.platform == "win32":
+    # Force UTF-8 encoding on standard output/error to prevent UnicodeEncodeError in Windows terminal
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
 import yaml
 import argparse
 import boto3
@@ -100,7 +107,7 @@ def download_and_extract_model(session, model_data_url, output_onnx_path, bucket
         
     parts = model_data_url[5:].split("/", 1)
     artifact_bucket = parts[0]
-    artifact_key = parts[1]
+    artifact_key = parts[1].replace("\\", "/")
     
     s3 = session.client('s3')
     
@@ -117,7 +124,7 @@ def download_and_extract_model(session, model_data_url, output_onnx_path, bucket
         extracted_files = os.listdir(tmpdir)
         print(f"  -> Extracted files: {extracted_files}")
         
-        onnx_filename = "latest.onnx"
+        onnx_filename = "seizure_detector_mobilenetv2.onnx"
         local_onnx = os.path.join(tmpdir, onnx_filename)
         
         if not os.path.exists(local_onnx):
@@ -128,7 +135,7 @@ def download_and_extract_model(session, model_data_url, output_onnx_path, bucket
         print(f"[SUCCESS] Copied trained model to local workspace: {output_onnx_path}")
         
         # 2. Upload to stable S3 model path
-        s3_stable_key = "models/latest.onnx"
+        s3_stable_key = "models/seizure_detector_mobilenetv2.onnx"
         print(f"[*] Uploading model to stable S3 path: s3://{bucket}/{s3_stable_key}")
         s3.upload_file(str(output_onnx_path), bucket, s3_stable_key)
         print(f"[SUCCESS] Model uploaded to s3://{bucket}/{s3_stable_key}")
@@ -268,7 +275,7 @@ def main():
     model_data_url = tf_estimator.model_data
     download_and_extract_model(session_boto, model_data_url, local_onnx, bucket)
     
-    print("\n[SUCCESS] SageMaker run completed! Model is deployed at latest.onnx and stable S3 folder.")
+    print("\n[SUCCESS] SageMaker run completed! Model is deployed and saved to S3 folder.")
 
 if __name__ == '__main__':
     main()

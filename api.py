@@ -38,7 +38,9 @@ def _env_float(name: str, default: float) -> float:
 
 
 MODEL_URL = os.environ.get("MODEL_URL", "").strip()
-MODEL_LOCAL_PATH = os.environ.get("MODEL_LOCAL_PATH", "artifacts/model.onnx").strip()
+config_onnx_path = config.get("paths", {}).get("target_onnx_path")
+default_local_path = config_onnx_path if (config_onnx_path and os.path.exists(config_onnx_path)) else "seizure_detector_mobilenetv2.onnx"
+MODEL_LOCAL_PATH = os.environ.get("MODEL_LOCAL_PATH", default_local_path).strip()
 MODEL_REFRESH_SECONDS = _env_float("MODEL_REFRESH_SECONDS", 0.0)
 MODEL_HTTP_TIMEOUT_S = _env_float("MODEL_HTTP_TIMEOUT_S", 30.0)
 

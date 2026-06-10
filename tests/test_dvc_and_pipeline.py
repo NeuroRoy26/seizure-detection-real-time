@@ -46,14 +46,14 @@ def test_dvc_configuration():
     assert datasets_dvc["outs"][0]["path"] == "datasets", "datasets.dvc does not track 'datasets' path."
     assert datasets_dvc["outs"][0]["remote"] == "gdrive-remote", "datasets.dvc does not route to gdrive-remote."
 
-    # Check latest.onnx.dvc outputs map to s3-remote
-    assert os.path.isfile("latest.onnx.dvc"), "latest.onnx.dvc file does not exist."
-    with open("latest.onnx.dvc", "r") as f:
+    # Check seizure_detector_mobilenetv2.onnx.dvc outputs map to s3-remote
+    assert os.path.isfile("seizure_detector_mobilenetv2.onnx.dvc"), "seizure_detector_mobilenetv2.onnx.dvc file does not exist."
+    with open("seizure_detector_mobilenetv2.onnx.dvc", "r") as f:
         latest_onnx_dvc = yaml.safe_load(f)
-    assert "outs" in latest_onnx_dvc, "No outs section in latest.onnx.dvc"
-    assert len(latest_onnx_dvc["outs"]) == 1, "Expected exactly one entry in outs section of latest.onnx.dvc"
-    assert latest_onnx_dvc["outs"][0]["path"] == "latest.onnx", "latest.onnx.dvc does not track 'latest.onnx' path."
-    assert latest_onnx_dvc["outs"][0]["remote"] == "s3-remote", "latest.onnx.dvc does not route to s3-remote."
+    assert "outs" in latest_onnx_dvc, "No outs section in seizure_detector_mobilenetv2.onnx.dvc"
+    assert len(latest_onnx_dvc["outs"]) == 1, "Expected exactly one entry in outs section of seizure_detector_mobilenetv2.onnx.dvc"
+    assert latest_onnx_dvc["outs"][0]["path"] == "seizure_detector_mobilenetv2.onnx", "seizure_detector_mobilenetv2.onnx.dvc does not track 'seizure_detector_mobilenetv2.onnx' path."
+    assert latest_onnx_dvc["outs"][0]["remote"] == "s3-remote", "seizure_detector_mobilenetv2.onnx.dvc does not route to s3-remote."
 
 
 # ── 2. The "Data Presence" Test ───────────────────────────────────────────────
@@ -118,7 +118,7 @@ def test_mock_data_pipeline(tmp_path, monkeypatch):
     summary_file.write_text(summary_content)
 
     hdf5_db_path = tmp_path / "train_database.h5"
-    target_onnx_path = tmp_path / "latest.onnx"
+    target_onnx_path = tmp_path / "seizure_detector_mobilenetv2.onnx"
 
     # Config dict mock
     mock_config = {

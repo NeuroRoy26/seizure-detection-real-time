@@ -31,7 +31,7 @@ flowchart TD
     end
 
     subgraph Real-Time Inference
-        S3Out -->|Retrieve & Extract| ONNX["latest.onnx"]
+        S3Out -->|Retrieve & Extract| ONNX["seizure_detector_mobilenetv2.onnx"]
         LT -->|Direct Export| ONNX
         
         ONNX -->|ONNX Runtime Inference| API["FastAPI Backend (api.py)"]
@@ -48,7 +48,7 @@ flowchart TD
 * **Parallelized Producer-Consumer ETL**: Processing large raw binary `.edf` files is heavily CPU-bound. To bypass the Global Interpreter Lock (GIL) and prevent database corruption (HDF5 does not support concurrent writes), the ETL pipeline uses a parallel `ProcessPoolExecutor` for signal filtering and validation (Producers) feeding a single-threaded writer queue (Consumer), achieving a **4x–8x processing speedup**.
 * **Structured Local Feature Store**: A unified **HDF5 Feature Store** separates processed raw signals (for deep learning models) and pre-calculated time-frequency features (RMS, line length, spectral band powers) for traditional machine learning baselines.
 * **Industrial Experiment Tracking (MLflow)**: Leverages an **MLflow SQLite backend** (`sqlite:///mlflow.db`) to record hyperparameters, evaluation metrics (Accuracy, Precision, Seizure Sensitivity/Recall, F1-Score, RMSE), and serializes the compiled ONNX model artifacts directly inside the active run.
-* **AWS SageMaker Cloud & Local Mode**: Supports both standard cloud training and containerized Local Mode (using Docker Desktop) via **AWS SageMaker**. It uploads preprocessed, down-sampled balanced datasets to **AWS S3**, provisions ephemeral training instances, executes the training script, and automatically downloads and extracts the compiled `latest.onnx` model.
+* **AWS SageMaker Cloud & Local Mode**: Supports both standard cloud training and containerized Local Mode (using Docker Desktop) via **AWS SageMaker**. It uploads preprocessed, down-sampled balanced datasets to **AWS S3**, provisions ephemeral training instances, executes the training script, and automatically downloads and extracts the compiled `seizure_detector_mobilenetv2.onnx` model.
 * **2D CNN Transfer Learning**: Maps 10-channel 1D EEG time-series windows to 2D representations using a `(1,1)` spatial channel expansion layer, resizes to `(224,224,3)` via bilinear interpolation, and utilizes a frozen **MobileNetV2** backbone pre-trained on ImageNet to perform transfer learning on neural signals.
 * **ONNX Compilation & Deployment**: Replaces heavy framework dependencies (`TensorFlow`/`PyTorch`) with a lightweight `onnxruntime` engine on the FastAPI backend for fast, low-latency, real-time predictions.
 
