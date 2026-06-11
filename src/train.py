@@ -262,22 +262,25 @@ def train_model(config: dict):
         print("4. MODEL CLINICAL EVALUATION")
         print("=" * 60)
         
+        # Copy indices before predict to avoid misalignment from on_epoch_end shuffle
+        train_indices_before = train_gen.indices.copy()
         raw_train_preds = model.predict(train_gen, verbose=0)
         y_train_pred = np.argmax(raw_train_preds, axis=1)
         
+        val_indices_before = val_gen.indices.copy()
         raw_val_preds = model.predict(val_gen, verbose=0)
         y_val_pred = np.argmax(raw_val_preds, axis=1)
         
-        # Align true labels from generators
+        # Align true labels from generators using copied indices
         y_train_true = []
         for i in range(len(train_gen)):
-            batch_indices = train_gen.indices[i * train_gen.batch_size : (i + 1) * train_gen.batch_size]
+            batch_indices = train_indices_before[i * train_gen.batch_size : (i + 1) * train_gen.batch_size]
             y_train_true.extend(y_full[np.sort(batch_indices)])
         y_train_true = np.array(y_train_true)
         
         y_val_true = []
         for i in range(len(val_gen)):
-            batch_indices = val_gen.indices[i * val_gen.batch_size : (i + 1) * val_gen.batch_size]
+            batch_indices = val_indices_before[i * val_gen.batch_size : (i + 1) * val_gen.batch_size]
             y_val_true.extend(y_full[np.sort(batch_indices)])
         y_val_true = np.array(y_val_true)
         
