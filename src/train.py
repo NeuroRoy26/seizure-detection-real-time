@@ -76,6 +76,10 @@ class HDF5SignalGenerator(Sequence):
             X_batch = h5f[x_key][sorted_idx]
             y_batch = h5f[y_key][sorted_idx]
             
+        # Dynamically scale Volts -> Microvolts if raw signals are in Volts (scale of 1e-4)
+        if np.max(np.abs(X_batch)) < 0.1:
+            X_batch = X_batch * 1e6
+
         # Dynamically slice or pad if the HDF5 has a different window size
         if X_batch.shape[2] != self.expected_samples:
             X_batch = X_batch[:, :, :self.expected_samples]
