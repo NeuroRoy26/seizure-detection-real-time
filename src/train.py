@@ -52,9 +52,6 @@ class HDF5SignalGenerator(Sequence):
         self.h5_path = h5_path
         self.indices = indices.copy()  # Use copy to avoid mutating original indices
         self.batch_size = batch_size
-
-    def on_epoch_end(self):
-        np.random.shuffle(self.indices)
         
         # Load expected signal length from config.yaml dynamically
         try:
@@ -65,6 +62,9 @@ class HDF5SignalGenerator(Sequence):
             )
         except Exception:
             self.expected_samples = 256  # Fallback to standard 2-sec @ 128Hz
+
+    def on_epoch_end(self):
+        np.random.shuffle(self.indices)
 
     def __len__(self) -> int:
         return int(np.ceil(len(self.indices) / float(self.batch_size)))
