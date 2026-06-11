@@ -1,6 +1,6 @@
 paths:
   hdf5_database_path: C:\Roy\Code\seizure-detection\seizure-detection-real-time\train_database.h5
-  hdf5_database_path_2d: C:\Roy\Code\seizure-detection\seizure-detection-real-time\train_database_2d.h5
+  hdf5_database_path_2d: C:\Roy\Code\seizure-detection\seizure-detection-real-time\train_database.h5
   local_data_dir: C:\Roy\Code\seizure-detection\seizure-detection-real-time\datasets
   s3_manifest_path: C:\Roy\Code\seizure-detection\seizure-detection-real-time\s3_keep_files.txt
   target_onnx_path: C:\Roy\Code\seizure-detection\seizure-detection-real-time\seizure_detector_mobilenetv2.onnx
@@ -26,7 +26,7 @@ signal_processing:
   window_sec: 2.0
 training:
   batch_size: 64
-  epochs: 20
+  epochs: 5
   learning_rate: 0.001
   test_split: 0.2
   
