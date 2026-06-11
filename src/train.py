@@ -50,8 +50,11 @@ class HDF5SignalGenerator(Sequence):
     def __init__(self, h5_path: str, indices: np.ndarray, batch_size: int = 64, **kwargs):
         super().__init__(**kwargs)
         self.h5_path = h5_path
-        self.indices = indices
+        self.indices = indices.copy()  # Use copy to avoid mutating original indices
         self.batch_size = batch_size
+
+    def on_epoch_end(self):
+        np.random.shuffle(self.indices)
         
         # Load expected signal length from config.yaml dynamically
         try:
