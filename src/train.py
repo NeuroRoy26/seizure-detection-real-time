@@ -71,8 +71,10 @@ class HDF5SignalGenerator(Sequence):
         sorted_idx = np.sort(batch_indices)
         
         with h5py.File(self.h5_path, 'r') as h5f:
-            X_batch = h5f['raw_signals/X'][sorted_idx]
-            y_batch = h5f['raw_signals/y'][sorted_idx]
+            x_key = 'raw_signals/X' if 'raw_signals/X' in h5f else 'X'
+            y_key = 'raw_signals/y' if 'raw_signals/y' in h5f else 'y'
+            X_batch = h5f[x_key][sorted_idx]
+            y_batch = h5f[y_key][sorted_idx]
             
         # Dynamically slice or pad if the HDF5 has a different window size
         if X_batch.shape[2] != self.expected_samples:
@@ -153,7 +155,8 @@ def train_model(config: dict):
         raise ImportError("TensorFlow is required to train the model")
         
     with h5py.File(h5_path, "r") as h5f:
-        y_full = np.array(h5f["raw_signals/y"], dtype=np.int32)
+        y_key = 'raw_signals/y' if 'raw_signals/y' in h5f else 'y'
+        y_full = np.array(h5f[y_key], dtype=np.int32)
         indices_full = np.arange(len(y_full))
         
     print(f"[*] Total samples loaded from Feature Store: {len(y_full)}")
