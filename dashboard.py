@@ -64,7 +64,8 @@ CHANNELS = 23
 
 def _init_state() -> None:
     st.session_state.setdefault("running", False)
-    st.session_state.setdefault("buffer", [])  # list[dict]: {"data": [...], "seizure_probability": float}
+    st.session_state.setdefault("buffer", [])  # list[list[float]]: 2D array of (time, channels)
+    st.session_state.setdefault("prob_history", [])  # list[float]: history of model prediction probabilities
     st.session_state.setdefault("connection_status", "Disconnected")
     st.session_state.setdefault("last_update_time", None)
 
@@ -80,7 +81,7 @@ def _trim_buffer(max_len: int) -> None:
     if len(st.session_state.buffer) > max_len:
         st.session_state.buffer = st.session_state.buffer[-max_len:]
 
-def _plot_eeg(buffer: list[dict], channel_mode: str) -> None:
+def _plot_eeg(buffer: list, channel_mode: str) -> None:
     st.subheader("📊 Live EEG Waveforms")
     if not buffer:
         st.info("Start the stream to view incoming EEG signals.")
@@ -91,13 +92,20 @@ def _plot_eeg(buffer: list[dict], channel_mode: str) -> None:
     ax.set_facecolor('#1e222b')
     ax.grid(True, color='#2e3440', linestyle='--', alpha=0.5)
 
+    if isinstance(buffer[0], dict):
+        raw_data = [x["data"] for x in buffer]
+    else:
+        raw_data = buffer
+
+    buffer_np = np.array(raw_data)
+
     if channel_mode == "All channels (overlaid)":
         for i in range(CHANNELS):
-            ax.plot([x["data"][i] for x in buffer], linewidth=1, alpha=0.7, label=f"Ch {i+1}")
+            ax.plot(buffer_np[:, i], linewidth=1, alpha=0.7, label=f"Ch {i+1}")
         ax.legend(ncols=6, fontsize=6, loc='upper right')
     else:
         idx = int(channel_mode.split()[-1]) - 1
-        ax.plot([x["data"][idx] for x in buffer], linewidth=1.8, color="#00d4ff", label=channel_mode)
+        ax.plot(buffer_np[:, idx], linewidth=1.8, color="#00d4ff", label=channel_mode)
         ax.legend(loc='upper right')
 
     ax.set_xlabel("Time Step (Rolling Window)", fontsize=9, color="#888888")
@@ -106,9 +114,9 @@ def _plot_eeg(buffer: list[dict], channel_mode: str) -> None:
     st.pyplot(fig)
     plt.close(fig)
 
-def _plot_prob(buffer: list[dict]) -> None:
+def _plot_prob(prob_history: list) -> None:
     st.subheader("📈 Model Inference Probability")
-    if not buffer:
+    if not prob_history:
         st.info("Start the stream to track seizure probability.")
         return
 
@@ -117,7 +125,10 @@ def _plot_prob(buffer: list[dict]) -> None:
     ax.set_facecolor('#1e222b')
     ax.grid(True, color='#2e3440', linestyle='--', alpha=0.5)
 
-    probs = [x["seizure_probability"] for x in buffer]
+    if isinstance(prob_history[0], dict):
+        probs = [x["seizure_probability"] for x in prob_history]
+    else:
+        probs = prob_history
     
     line_color = "#09ab3b" # green
     if probs[-1] > 0.8:
@@ -178,28 +189,50 @@ with st.sidebar:
 
     current_state = get_sim_state()
     
-    if current_state == "normal":
-        st.sidebar.success("✅ State: Normal EEG active")
+    default_mode_idx = 0
+    default_trigger_idx = 0
+    if current_state in ["patient_normal", "patient_seizure"]:
+        default_mode_idx = 1
+        if current_state == "patient_seizure":
+            default_trigger_idx = 1
     elif current_state == "seizure":
-        st.sidebar.error("🚨 State: Active Seizure active")
+        default_trigger_idx = 1
+        
+    mode_choice = st.sidebar.radio(
+        "EEG Source Mode",
+        options=["Synthesized Waves", "Real Patient Recording"],
+        index=default_mode_idx,
+        key="eeg_source_mode"
+    )
+    
+    trigger_choice = st.sidebar.radio(
+        "Clinical Signal Type",
+        options=["Normal EEG Baseline", "Trigger Seizure"],
+        index=default_trigger_idx,
+        key="clinical_signal_type"
+    )
+    
+    if mode_choice == "Synthesized Waves":
+        target_state = "seizure" if trigger_choice == "Trigger Seizure" else "normal"
+    else:
+        target_state = "patient_seizure" if trigger_choice == "Trigger Seizure" else "patient_normal"
+        
+    if current_state != target_state and current_state != "disconnected":
+        set_sim_state(target_state)
+        st.rerun()
+        
+    if current_state in ["normal", "patient_normal"]:
+        st.sidebar.success(f"✅ State: Normal EEG active ({current_state})")
+    elif current_state in ["seizure", "patient_seizure"]:
+        st.sidebar.error(f"🚨 State: Seizure active ({current_state})")
     else:
         st.sidebar.warning("⚠️ State: Simulator disconnected")
 
-    col_sim1, col_sim2 = st.sidebar.columns(2)
-    with col_sim1:
-        if st.sidebar.button("🌿 Normal EEG", use_container_width=True):
-            set_sim_state("normal")
-            st.rerun()
-    with col_sim2:
-        if st.sidebar.button("⚡ Trigger Seizure", use_container_width=True):
-            set_sim_state("seizure")
-            st.rerun()
-            
     st.sidebar.markdown(
         """
         <small style='color: #888888;'>
-        Click <b>Trigger Seizure</b> to mathematically synthesize rhythmic synchronous 2.5Hz slow-wave discharges. 
-        Observe the signal amplitude spike (~3x std dev) and the model's probability react live!
+        Choose <b>Real Patient Recording</b> to stream historical clinical signals from the CHB-MIT dataset. 
+        Select <b>Trigger Seizure</b> to play seizure epochs and observe model outputs live!
         </small>
         """,
         unsafe_allow_html=True
@@ -240,8 +273,10 @@ with tab_stream:
         try:
             payload = _fetch_latest(api_url, timeout_s=timeout_s)
             if "data" in payload and "seizure_probability" in payload:
-                st.session_state.buffer.append(payload)
-                _trim_buffer(max_len=max_len)
+                st.session_state.buffer = payload["data"]
+                st.session_state.prob_history.append(payload["seizure_probability"])
+                if len(st.session_state.prob_history) > max_len:
+                    st.session_state.prob_history = st.session_state.prob_history[-max_len:]
                 st.session_state.connection_status = "Connected"
                 st.session_state.last_update_time = time.strftime("%H:%M:%S")
             else:
@@ -251,7 +286,7 @@ with tab_stream:
             st.error(f"Failed to fetch data: {e}")
 
     # Dynamic Alert Metric Card
-    latest_prob = st.session_state.buffer[-1]["seizure_probability"] if st.session_state.buffer else 0.0
+    latest_prob = st.session_state.prob_history[-1] if st.session_state.prob_history else 0.0
     prob_pct = latest_prob * 100
 
     col_metric, col_plot = st.columns([1.2, 2.5])
@@ -318,7 +353,7 @@ with tab_stream:
 
     with col_plot:
         _plot_eeg(st.session_state.buffer, channel_mode=channel_mode)
-        _plot_prob(st.session_state.buffer)
+        _plot_prob(st.session_state.prob_history)
 
 
 with tab_explorer:
