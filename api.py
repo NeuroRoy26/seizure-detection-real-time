@@ -196,7 +196,9 @@ async def get_latest():
     if seizure_probability is None:
         # Not enough samples yet (or model not configured); return a stable default.
         seizure_probability = 0.0
-    return {"data": latest_data.tolist(), "seizure_probability": seizure_probability}
+        
+    buffer_list = [sample.tolist() for sample in _sample_buffer]
+    return {"data": buffer_list, "seizure_probability": seizure_probability}
 
 @app.get("/simulator/state")
 async def get_simulator_state():
@@ -205,10 +207,10 @@ async def get_simulator_state():
 @app.post("/simulator/state")
 async def set_simulator_state(data: SimulatorState):
     global _simulator_state
-    if data.state in ["normal", "seizure"]:
+    if data.state in ["normal", "seizure", "patient_normal", "patient_seizure"]:
         _simulator_state = data.state
         return {"message": "Simulator state updated successfully", "state": _simulator_state}
-    return {"error": "Invalid state. Choose 'normal' or 'seizure'."}
+    return {"error": "Invalid state. Choose 'normal', 'seizure', 'patient_normal', or 'patient_seizure'."}
 
 @app.post("/classify_window")
 async def classify_window(window: EEGWindow):
