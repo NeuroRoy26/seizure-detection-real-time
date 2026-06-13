@@ -98,7 +98,7 @@ def _predict_seizure_probability_from_buffer() -> Optional[float]:
     window = window[:STANDARDIZE_CHANNELS, :]  # (20, time)
     window = window[BEST_CHANNELS, :]  # (10, time)
 
-    x = window.astype(np.float32)[None, :, :]  # (1, 10, time)
+    x = window.astype(np.float32)[None, :, :, None]  # (1, 10, time, 1)
 
     input_name = _onnx_session.get_inputs()[0].name
     outputs = _onnx_session.run(None, {input_name: x})
@@ -216,7 +216,7 @@ async def classify_window(window: EEGWindow):
     if _onnx_session is None:
         return {"error": "Model not loaded"}
     
-    x = np.array(window.data, dtype=np.float32)[None, :, :]
+    x = np.array(window.data, dtype=np.float32)[None, :, :, None]
     
     input_name = _onnx_session.get_inputs()[0].name
     outputs = _onnx_session.run(None, {input_name: x})
