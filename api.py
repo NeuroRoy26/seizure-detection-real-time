@@ -24,7 +24,14 @@ app = FastAPI()
 class EEGData(BaseModel):
     data: list[float]
 
+class SimulatorState(BaseModel):
+    state: str
+
+class EEGWindow(BaseModel):
+    data: list[list[float]]
+
 latest_data = None
+_simulator_state = "normal"
 
 
 def _env_float(name: str, default: float) -> float:
@@ -146,6 +153,22 @@ def _maybe_refresh_model() -> None:
 async def _startup() -> None:
     # Download model at startup (if configured). This keeps “it runs” behavior for demos.
     _maybe_refresh_model()
+    
+    # Pre-populate rolling buffer with realistic baseline normal EEG signals
+    # to avoid prediction delays at startup.
+    phase_offsets = np.array([i * 0.23 for i in range(INCOMING_CHANNELS)], dtype=float)
+    for i in range(WINDOW_SAMPLES):
+        t = i / SFREQ_HZ
+        delta = 25.0 * np.sin(2 * np.pi * 1.5 * t + phase_offsets)
+        theta = 15.0 * np.sin(2 * np.pi * 5.0 * t + phase_offsets * 1.3)
+        alpha = 18.0 * np.sin(2 * np.pi * 10.0 * t + phase_offsets * 0.7)
+        beta = 8.0 * np.sin(2 * np.pi * 20.0 * t + phase_offsets * 2.1)
+        noise = np.random.normal(0, 15.0, size=(INCOMING_CHANNELS,))
+        sample = (delta + theta + alpha + beta + noise) * 0.8
+        _sample_buffer.append(sample)
+        
+    global latest_data
+    latest_data = _sample_buffer[-1]
 
 @app.post("/ingest")
 async def ingest(data: EEGData):
@@ -174,3 +197,33 @@ async def get_latest():
         # Not enough samples yet (or model not configured); return a stable default.
         seizure_probability = 0.0
     return {"data": latest_data.tolist(), "seizure_probability": seizure_probability}
+
+@app.get("/simulator/state")
+async def get_simulator_state():
+    return {"state": _simulator_state}
+
+@app.post("/simulator/state")
+async def set_simulator_state(data: SimulatorState):
+    global _simulator_state
+    if data.state in ["normal", "seizure"]:
+        _simulator_state = data.state
+        return {"message": "Simulator state updated successfully", "state": _simulator_state}
+    return {"error": "Invalid state. Choose 'normal' or 'seizure'."}
+
+@app.post("/classify_window")
+async def classify_window(window: EEGWindow):
+    global _onnx_session
+    if _onnx_session is None:
+        return {"error": "Model not loaded"}
+    
+    x = np.array(window.data, dtype=np.float32)[None, :, :]
+    
+    input_name = _onnx_session.get_inputs()[0].name
+    outputs = _onnx_session.run(None, {input_name: x})
+    logits = outputs[0]
+    logits = np.asarray(logits, dtype=np.float32)[0]
+    
+    # Softmax
+    exps = np.exp(logits - np.max(logits))
+    probs = exps / np.sum(exps)
+    return {"seizure_probability": float(probs[1])}

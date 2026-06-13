@@ -6,12 +6,11 @@ from unittest.mock import MagicMock
 CHANNEL_COUNT = 23
 
 
-class _Ctx:
+class _Ctx(MagicMock):
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc, tb):
-        del exc_type, exc, tb
         return False
 
 
@@ -26,8 +25,15 @@ class _SessionState(dict):
 def _fake_streamlit():
     st = SimpleNamespace()
     st.session_state = _SessionState()
-    st.sidebar = _Ctx()
+    
+    sidebar_mock = _Ctx()
+    sidebar_mock.columns = lambda *args, **kwargs: [_Ctx(), _Ctx()]
+    st.sidebar = sidebar_mock
     # Use MagicMock to safely intercept calls without side effects or recursion.
+    st.set_page_config = MagicMock()
+    st.markdown = MagicMock()
+    st.success = MagicMock()
+    st.warning = MagicMock()
     st.title = MagicMock()
     st.subheader = MagicMock()
     st.info = MagicMock()
@@ -39,7 +45,12 @@ def _fake_streamlit():
     st.slider = lambda *args, **kwargs: kwargs.get("value")
     st.selectbox = lambda *args, **kwargs: "Channel 1"
     st.button = lambda *args, **kwargs: False
-    st.columns = lambda *args, **kwargs: [_Ctx(), _Ctx(), _Ctx()]
+    st.tabs = lambda specs, *args, **kwargs: [_Ctx() for _ in range(len(specs))]
+    st.spinner = lambda *args, **kwargs: _Ctx()
+    def mock_columns(spec, *args, **kwargs):
+        n = spec if isinstance(spec, int) else len(spec)
+        return [_Ctx() for _ in range(n)]
+    st.columns = mock_columns
     st.rerun = lambda: None
     return st
 

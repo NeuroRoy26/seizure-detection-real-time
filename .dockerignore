@@ -1,10 +1,13 @@
-venv/
-__pycache__/
-*.pyc
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.git/
-.cursor/
-*.log
-datasets/
+# Ignore everything by default to prevent copying large datasets or databases
+*
+
+# Allow the specific production-only serving files
+!requirements.txt
+!api.py
+!dashboard.py
+!mock_streamer.py
+!start.py
+!model_fetch.py
+!config.yaml
+!seizure_detector_mobilenetv2.onnx
+!train_database.h5
