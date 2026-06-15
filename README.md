@@ -12,20 +12,20 @@ pinned: false
 
 [![CI](https://github.com/NeuroRoy26/seizure-detection-real-time/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/NeuroRoy26/seizure-detection-real-time/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/github/NeuroRoy26/seizure-detection-real-time/graph/badge.svg?token=KIM3PCNSMP)](https://codecov.io/github/NeuroRoy26/seizure-detection-real-time)
-[![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-yellow)](https://huggingface.co/spaces/NeuroRoy26/seizure-detection-real-time)
+[![Hugging Face Spaces](https://img.shields.io/badge/Hugging_Face-Spaces-blue)](https://huggingface.co/spaces/NeuroRoy26/seizure-detection-real-time)
 [![MLflow](https://img.shields.io/badge/MLflow-Tracking-blueviolet)](https://mlflow.org/)
 [![AWS SageMaker](https://img.shields.io/badge/AWS-SageMaker-orange)](https://aws.amazon.com/sagemaker/)
 [![Great Expectations](https://img.shields.io/badge/Data_Quality-Great_Expectations-green)](https://greatexpectations.io/)
 
-This repository implements a production-grade, end-to-end MLOps pipeline for real-time seizure detection from multi-channel EEG signals. The architecture scales from local data processing to cloud-based distributed training, featuring robust data validation, structured feature storage, experiment tracking, and real-time ONNX inference.
+This repository contains a production-grade, end-to-end MLOps pipeline for real-time seizure detection from multi-channel EEG signals. The system is designed to scale from local processing on clinical datasets to distributed training in the cloud, featuring automated data quality validation, structured feature storage, experiment tracking, containerized orchestration, and low-latency ONNX-based real-time inference.
 
-### 🌐 Live Production Demo
-You can interact with the live model and stream clinical datasets directly in your browser:
-👉 **[Interactive Streamlit Dashboard on Hugging Face Spaces](https://huggingface.co/spaces/NeuroRoy26/seizure-detection-real-time)**
+### Interactive Live Demo
+A live Streamlit dashboard serving model predictions on clinical streaming datasets is available at:
+[Interactive Streamlit Dashboard on Hugging Face Spaces](https://huggingface.co/spaces/NeuroRoy26/seizure-detection-real-time)
 
 ---
 
-## 🏗️ Architecture & Data Flow
+## Architecture and Data Flow
 
 ```mermaid
 flowchart TD
@@ -57,160 +57,193 @@ flowchart TD
 
 ---
 
-## 🚀 Key Technical Highlights (MLOps Engineering)
+## Technical Highlights and Engineering Decisions
 
-* **Robust Data Validation Gate**: Integrates **Great Expectations v1.18.0** to enforce data-quality schemas (e.g. range bounds, standard deviations, scaling limits) on raw EEG microvolt values, preventing bad channel data or sensor noise from poisoning downstream models.
-* **Parallelized Producer-Consumer ETL**: Processing large raw binary `.edf` files is heavily CPU-bound. To bypass the Global Interpreter Lock (GIL) and prevent database corruption (HDF5 does not support concurrent writes), the ETL pipeline uses a parallel `ProcessPoolExecutor` for signal filtering and validation (Producers) feeding a single-threaded writer queue (Consumer), achieving a **4x–8x processing speedup**.
-* **Structured Local Feature Store**: A unified **HDF5 Feature Store** separates processed raw signals (for deep learning models) and pre-calculated time-frequency features (RMS, line length, spectral band powers) for traditional machine learning baselines.
-* **Industrial Experiment Tracking (MLflow)**: Leverages an **MLflow SQLite backend** (`sqlite:///mlflow.db`) to record hyperparameters, evaluation metrics (Accuracy, Precision, Seizure Sensitivity/Recall, F1-Score, RMSE), and serializes the compiled ONNX model artifacts directly inside the active run.
-* **AWS SageMaker Cloud & Local Mode**: Supports both standard cloud training and containerized Local Mode (using Docker Desktop) via **AWS SageMaker**. It uploads preprocessed, down-sampled balanced datasets to **AWS S3**, provisions ephemeral training instances, executes the training script, and automatically downloads and extracts the compiled `seizure_detector_mobilenetv2.onnx` model.
-* **2D CNN Transfer Learning**: Maps 10-channel 1D EEG time-series windows to 2D representations using a `(1,1)` spatial channel expansion layer, resizes to `(224,224,3)` via bilinear interpolation, and utilizes a frozen **MobileNetV2** backbone pre-trained on ImageNet to perform transfer learning on neural signals.
-* **ONNX Compilation & Deployment**: Replaces heavy framework dependencies (`TensorFlow`/`PyTorch`) with a lightweight `onnxruntime` engine on the FastAPI backend for fast, low-latency, real-time predictions.
+### 1. Robust Data Validation Gate (Great Expectations)
+To prevent sensor noise, electrode impedance issues, or faulty signal inputs from degrading model performance, the ingestion pipeline integrates a data validation gate using [Great Expectations v1.x Fluent API](https://greatexpectations.io/). Implemented in [validation.py](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/src/validation.py), the [validate_eeg_data](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/src/validation.py#L14) function validates signal schemas in real-time. It ensures:
+* Non-null values across all channels.
+* Electrical amplitude bounds (microvolt range) are met for at least 95 percent of the recording window.
+
+### 2. High-Throughput Parallel ETL Pipeline
+Processing large binary European Data Format (.edf) files is CPU-bound. Since the standard Python HDF5 library (h5py) does not support concurrent writes, a multiprocess producer-consumer ETL design was implemented in [preprocess.py](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/src/preprocess.py). 
+* **Producers**: A `ProcessPoolExecutor` parallelizes MNE-based bandpass/notch filtering, resampling, and window slicing across all available CPU cores.
+* **Consumer**: The parent process collects the preprocessed windows and writes them sequentially into the Feature Store.
+This architecture bypasses the Global Interpreter Lock (GIL) and achieves a 4x to 8x throughput acceleration during preprocessing while ensuring database write safety.
+
+### 3. DSP-Driven Channel Selection and Stability Analysis
+The raw clinical recordings contain 23 channels, many of which suffer from localized noise. Rather than using fixed channel configurations, a signal-processing stability algorithm was built in [channel_selection.py](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/channel_selection.py). The [calculate_channel_stability](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/channel_selection.py#L17) function ranks channels across initial recordings by:
+1. Trimming boundary impedance noise (first/last 1.5 seconds).
+2. Applying bandpass filters (1 to 50 Hz).
+3. Suppressing artifacts by mapping robust Z-scores using Median Absolute Deviation (MAD) and interpolating outlier spikes with median-filtered signals.
+4. Computing a stability score:
+   \[\text{Stability Score} = \frac{\text{Mean RMS}}{\text{Coefficient of Variation (CV) of RMS} + \epsilon}\]
+The top 10 channels with the highest signal-to-noise stability are programmatically saved to [config.yaml](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/config.yaml) to align preprocessing, training, and real-time inference.
+
+### 4. Structured Local Feature Store (HDF5)
+Implemented in [feature_store.py](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/src/feature_store.py), the [LocalFeatureStore](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/src/feature_store.py#L18) class manages a local HDF5 file containing two distinct groups:
+* `raw_signals`: Chunked datasets containing raw time-series tensors of shape `(N, channels, samples)` optimized for deep learning models.
+* `engineered_features`: Tabular features of shape `(N, channels, features)` for statistical modeling and traditional machine learning.
+
+### 5. Dual Model Architecture Pathways
+The system supports two distinct model architectures to accommodate different hardware resources:
+* **Custom 2D Convolutional Neural Network**: Implemented in [model.py](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/src/model.py), the [build_adapted_2d_cnn](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/src/model.py#L23) function compiles a custom deep network that processes raw signal tensors of shape `(10, 256, 1)` through stacked Conv2D blocks with spatial-temporal max-pooling, Global Average Pooling, and dropout layers.
+* **MobileNetV2 Transfer Learning**: Implemented in [local_train_onnx.py](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/local_train_onnx.py#L80) and [sagemaker_train.py](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/sagemaker_train.py#L42), the [build_api_compliant_cnn](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/local_train_onnx.py#L80) function maps the 1D EEG signal `(10, 256)` to a 2D representation using a `(1,1)` spatial channel expansion layer `(10, 256, 3)`, resizes via bilinear interpolation to `(224, 224, 3)`, and extracts features using a frozen MobileNetV2 backbone pre-trained on ImageNet.
+
+### 6. ONNX Compilation and Low-Latency Serving
+To ensure high-throughput serving and eliminate framework overhead (TensorFlow/PyTorch) in production, models are cross-compiled using `tf2onnx` to the Open Neural Network Exchange (ONNX) format. The FastAPI backend served via [api.py](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/api.py) runs the compiled model using the `onnxruntime` CPU execution provider, ensuring fast, portable, and low-latency predictions (under 5 milliseconds).
+
+### 7. AWS SageMaker Integration (Local and Cloud Modes)
+Automated training is orchestrated via [run_sagemaker_job.py](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/run_sagemaker_job.py). 
+* **Local Mode**: Runs containerized training locally using Docker Desktop to debug the container code and scripts without cloud costs.
+* **Cloud Mode**: Uploads dataset to S3, provisions managed Deep Learning Container instances, executes the training loop via [sagemaker_train.py](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/sagemaker_train.py), and downloads, unpacks, and registers the final ONNX model back into S3.
+AWS credentials are dynamically loaded from environment variables or extracted from local DVC config files (.dvc/config.local) as a fallback mechanism.
+
+### 8. Experiment Tracking (MLflow and DAGsHub)
+The local training pipeline [train.py](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/src/train.py) uses a custom Keras callback [MLflowCallback](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/src/train.py#L94) to log loss, accuracy, hyperparameters, and clinical evaluation metrics to an MLflow tracking server using an SQLite database. Grid-search hyperparameter sweeps executed via [tune.py](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/src/tune.py) log results remotely to DAGsHub using integrated MLflow tracking.
 
 ---
 
-## 🛠️ Codebase Structure
+## Codebase Structure
 
 ```text
-├── config.yaml                     # Centralized project configurations (ETL, paths, tuning, models)
+├── config.yaml                     # Centralized project configuration parameters
 ├── api.py                          # FastAPI server serving real-time model inference
-├── dashboard.py                    # Streamlit real-time visualization dashboard
-├── mock_streamer.py                # Simulated multi-channel EEG streamer
-├── run_sagemaker_job.py            # SageMaker orchestrator (handles S3 upload, Docker launch, download)
-├── sagemaker_train.py              # Cloud/Container training script (runs inside SageMaker TensorFlow container)
-├── requirements.txt                # Production dependencies (FastAPI, Streamlit, OnnxRuntime, etc.)
-├── requirements-dev.txt            # Development & pipeline dependencies (MNE, TensorFlow, Great Expectations, MLflow)
+├── dashboard.py                    # Streamlit visualization dashboard
+├── mock_streamer.py                # Command-line multi-channel EEG signal streamer
+├── build_local_database.py         # local ETL script for database extraction
+├── channel_selection.py            # Universal channel selection and stability algorithms
+├── export_and_upload_onnx.py       # Helper utility for PyTorch to ONNX conversion and GCS upload
+├── local_train_onnx.py             # Script to train MobileNetV2 transfer learning model locally
+├── run_sagemaker_job.py            # Orchestrator for AWS SageMaker training jobs
+├── sagemaker_train.py              # Cloud training script executed within SageMaker container
+├── model_fetch.py                  # Utility class for programmatic cloud model downloading
+├── start.py                        # Master script to launch backend, frontend, and streamer
+├── requirements.txt                # Core production dependencies
+├── requirements-dev.txt            # Development, validation, and MLOps dependencies
 ├── src/
 │   ├── preprocess.py               # Multiprocess ETL orchestrator
-│   ├── validation.py               # Great Expectations data validator
+│   ├── validation.py               # Great Expectations data validation logic
 │   ├── features.py                 # Time-frequency domain feature extraction
-│   ├── feature_store.py            # Local HDF5 Feature Store manager
-│   ├── model.py                    # Adapted 2D-CNN Model architecture
-│   ├── train.py                    # Local training loop & MLflow logger
-│   └── tune.py                     # Local Grid Search hyperparameter tuner
-└── tests/                          # 50+ unit and integration tests (Pytest)
+│   ├── feature_store.py            # HDF5 Local Feature Store interface
+│   ├── model.py                    # Custom 2D-CNN Model architecture definition
+│   ├── train.py                    # Local training loop and MLflow tracker
+│   └── tune.py                     # Automated grid-search hyperparameter tuner
+└── tests/                          # Automated Pytest suite containing unit and integration tests
 ```
 
 ---
 
-## 💻 Getting Started (Installation & Run)
+## Data Pipeline and Feature Store
 
-### 1. Environment Setup & Pulling Data (DVC)
-Create your virtual environment, install dependencies, and pull the version-controlled hospital datasets:
+### Preprocessing and Feature Extraction
+The processing pipeline implements notch filtering at 60 Hz and bandpass filtering between 1 and 50 Hz to remove high-frequency noise and DC drift. The resampled 10-channel windows are processed by the feature engineering engine in [features.py](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/src/features.py) to extract 9 mathematical features per channel:
+* **Time-domain**: Variance, Root Mean Square (RMS), Line Length, Kurtosis.
+* **Frequency-domain**: Relative power in Delta (0.5–4.0 Hz), Theta (4.0–8.0 Hz), Alpha (8.0–12.0 Hz), Beta (12.0–30.0 Hz), and Gamma (30.0–45.0 Hz) bands computed via Welch periodograms.
+
+### Class Imbalance Handling
+Clinical seizure data contains an inherent class imbalance (majority normal/inter-ictal data). The data pipeline handles this via:
+1. **Under-sampling**: The training database build process in [build_local_database.py](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/build_local_database.py) uses structured under-sampling. It preserves all seizure windows and samples normal windows (baseline and pre-ictal) at a configurable ratio (default 2.0x negatives to positives).
+2. **Stratification**: Datasets are divided into train and test sets using stratified splits to maintain matching seizure proportions in both sets.
+3. **Class Weighting**: The loss function dynamically scales gradients during training using balanced class weights computed via scikit-learn.
+
+---
+
+## Installation and Setup
+
+### 1. Environment Configuration
+Create a virtual environment and install core and development dependencies:
 ```powershell
-# Create & activate virtual environment
+# Create and activate virtual environment
 python -m venv venv
-.\venv\Scripts\Activate.ps1   # Windows PowerShell
+.\venv\Scripts\Activate.ps1
 
-# Install dev/mlops dependencies
+# Install required dependencies
 pip install -r requirements.txt -r requirements-dev.txt
+```
 
-# Pull hospital datasets from Google Drive remote
+### 2. Version-Controlled Clinical Data (DVC)
+Pull the clinical datasets from the remote Google Drive storage:
+```powershell
 dvc pull datasets.dvc
 ```
 
-### 2. Run the Data Preprocessing Pipeline (ETL)
-Execute the ETL script to select the 10 most stable channels dynamically, apply bandpass/notch filters, run data validation checks, and save windows to the HDF5 Feature Store:
+### 3. Local ETL Pipeline Execution
+To run the full preprocessing pipeline, extract channels, validate files with Great Expectations, extract engineered features, and construct the HDF5 Feature Store:
 ```powershell
 python src/preprocess.py
 ```
 
-### 3. Training & Orchestration
-
-#### Local Training & Hyperparameter Tuning
-Train a model locally and track it with MLflow (runs local SQLite server):
-```powershell
-# Run local training loop
-python src/train.py
-
-# Run grid search hyperparameter sweep
-python src/tune.py
-
-# View training metrics and ONNX artifacts locally
-mlflow ui --backend-store-uri sqlite:///mlflow.db
-```
-
-#### AWS SageMaker Training (Cloud / Local Container Mode)
-Validate your containerized training scripts locally inside a Docker container using SageMaker Local Mode, or scale out to managed cloud instances. The orchestration pipeline:
-* Programmatically uploads the local down-sampled balanced dataset (`train_database.h5`) to S3.
-* Pulls the official SageMaker TensorFlow deep learning container.
-* Overcomes dynamic container library mismatches (e.g., pinning `onnx<1.16.0` and `ml-dtypes==0.2.0` at runtime to ensure compatibility with TensorFlow 2.14).
-* Automatically downloads the finished `model.tar.gz` archive, normalizes S3 paths (handling Windows backslash variations), extracts the compiled ONNX model, and deploys it back to your stable S3 path.
-
-```powershell
-# Run in SageMaker Local Mode using your local Docker engine (for local debugging/verification)
-python run_sagemaker_job.py --local
-
-# Spin up a managed SageMaker cloud instance (ml.m5.large or GPU instances)
-python run_sagemaker_job.py --role-arn arn:aws:iam::116584140401:role/service-role/AmazonSageMaker-ExecutionRole-XXXXXXXX
-```
-
 ---
 
-## ☁️ Cloud & Distributed Training (Databricks & Google Colab)
+## Execution Guide
 
-To demonstrate enterprise-scale readiness, the training pipeline is fully adapted to run on cloud platforms for both lightweight verification and large-scale GPU training:
+### 1. Full Real-Time Suite Execution (Recommended)
+To start the entire real-time visualization suite locally (FastAPI backend, background EEG streamer, and Streamlit dashboard) using a single command:
+```powershell
+python start.py
+```
+* **FastAPI Backend Documentation**: Accessible at [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs).
+* **Streamlit Dashboard**: Accessible in the browser at [http://localhost:7860](http://localhost:7860).
 
-### 1. Databricks Verification Loop (S3 Integration)
-* **Purpose:** Runs cluster-level model compilation and training validation on shared CPU/GPU nodes.
-* **Architecture:** The notebook connects directly to AWS S3 using boto3, downloads the preprocessed `train_database.h5` dataset to cluster-local scratch space, compiles the 2D-CNN transfer learning graph, and executes a 1-epoch validation run.
-* **Verify Live Work:** You can inspect the fully executed notebook directly in the cloud here: [Databricks Verification Notebook Link](https://dbc-da5959a3-d9cb.cloud.databricks.com/editor/notebooks/3300191887270562?o=7474657888742618)
-* **Bypassing Cluster Overrides:** The notebook is configured with system-level `!pip` overrides to bypass Databricks CONNECT environment sync issues.
+### 2. Manual Subprocess Execution
+Alternatively, you can run the components in three separate terminal sessions:
 
-### 2. Google Colab Training (Free T4 GPU Acceleration)
-* **Purpose:** Handles hyperparameter sweeps and heavy production model training (e.g., 200 epochs) utilizing free high-performance NVIDIA Tesla T4 GPUs.
-* **Workflow:**
-  1. Mounts Google Drive and copies the 2D HDF5 dataset (`train_database_2d.h5`) to Colab's local SSD to prevent cloud drive latency during training batches.
-  2. Integrates with **DAGsHub & MLflow** to log parameters, metrics, and ONNX models remotely.
-  3. Executes grid search hyperparameter sweeps (`src/tune.py`) and saves the best model.
-  4. Runs the final 20-epoch production model (`src/train.py`) and copies the output ONNX model back to your Google Drive and AWS S3 bucket securely using interactive credentials.
-* **Notebook File:** [colab_training.ipynb](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/colab_training.ipynb)
-
----
-
-## ⚡ Real-Time System Run (Local Demo)
-
-To run the full end-to-end real-time dashboard, start the following processes in three separate terminals:
-
-### 1) Start Uvicorn FastAPI Server (Terminal A)
+#### Terminal A: Launch FastAPI Backend
 ```powershell
 python -m uvicorn api:app --reload
 ```
-FastAPI runs locally at `http://127.0.0.1:8000`. Access the interactive API documentation at `http://127.0.0.1:8000/docs`.
 
-### 2) Launch the Mock EEG Streamer (Terminal B)
+#### Terminal B: Start the EEG Signal Streamer
 ```powershell
 python mock_streamer.py --hz 128 --seizure-every 180 --seizure-duration 10
 ```
-Simulates real-time 23-channel EEG streaming data. It automatically detects and caches the local clinical HDF5 database (`train_database.h5`) if present:
-* **Synthesized Waves**: Generates multi-channel waveforms combining Delta, Theta, Alpha, and Beta frequency components with Gaussian sensor noise.
-* **Real Patient Recording**: Streams clinical patient recordings, mapping the 10 selected best channels to their positions in the 23-channel EEG template and scaling amplitudes (Volts to microvolts).
+The streamer automatically detects if the local clinical HDF5 database `train_database.h5` is present. If found, it streams real patient clinical signals mapped to the 10 selected best channels. If missing, it generates synthesized multi-channel waveforms.
 
-### 3) Run the Streamlit Dashboard (Terminal C)
+#### Terminal C: Run Streamlit Visualization
 ```powershell
 streamlit run dashboard.py
 ```
-Open `http://localhost:8501` in your browser and click **Start Stream** to visualize the real-time pipeline.
 
-### 🎮 Interactive Controls in the Dashboard
-The dashboard features an advanced control panel to interact with the streaming simulator:
-* **EEG Source Mode**: Toggle dynamically between **Synthesized Waves** and **Real Patient Recording** (clinical signals). The mock streamer detects the selection instantly.
-* **⚡ Trigger Seizure**: Manually inject a 10-second seizure event. Clicking this:
-  1. Signals the streamer to stream high-amplitude rhythmic discharges (synthesized) or actual seizure epochs (patient recordings).
-  2. Places the trigger button in a **10-second cooldown lock** showing a live countdown timer.
-  3. Automatically resets the system state back to **Normal EEG** once the 10 seconds elapse.
-* **EEG Electrode Mode**: Inspect any individual channel (Channel 1–23) or overlay all 23 channels simultaneously on a single live-updating plot.
-* **Layout Stability**: The visual layout is fully optimized to prevent layout shifts or horizontal oscillations during continuous streaming.
+### 3. Local Model Training and Tuning
+To train models locally and log experiments to the local MLflow server:
+```powershell
+# Run training loop for the custom 2D-CNN
+python src/train.py
+
+# Run local hyperparameter search (learning rates and batch sizes)
+python src/tune.py
+
+# Launch local MLflow UI to view tracking metrics and ONNX artifacts
+mlflow ui --backend-store-uri sqlite:///mlflow.db
+```
+
+### 4. AWS SageMaker Training Jobs
+Run training inside Docker containers locally (SageMaker Local Mode) or on managed cloud instances:
+```powershell
+# SageMaker Local Mode (Requires Docker running on the host system)
+python run_sagemaker_job.py --local
+
+# SageMaker Cloud Instance Training (Requires AWS Execution Role ARN)
+python run_sagemaker_job.py --role-arn arn:aws:iam::116584140401:role/service-role/AmazonSageMaker-ExecutionRole-XXXXXXXX
+```
+
+### 5. Cloud Platform Training Notebooks
+The pipeline is adapted for interactive execution on shared cloud infrastructure:
+* **Google Colab**: The notebook [colab_training.ipynb](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/colab_training.ipynb) maps the pipeline to run on free high-performance GPU instances (NVIDIA T4), integrates with DAGsHub/MLflow remotely, and saves trained weights to Google Drive/S3.
+* **Databricks**: The notebook [databricks_verification.ipynb](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/databricks_verification.ipynb) executes cluster-level training validation on shared nodes, connecting directly to S3 data channels. A fully executed version can be inspected here: [Databricks Verification Notebook Link](https://dbc-da5959a3-d9cb.cloud.databricks.com/editor/notebooks/3300191887270562?o=7474657888742618)
 
 ---
 
-## 🧪 Testing & Code Quality
-The codebase is validated by a rigorous Pytest test suite containing **56 unit and integration tests** covering mock streaming, validation constraints, preprocessing transformations, API routes, and model serialization.
+## Testing and Code Quality
+
+The codebase utilizes a comprehensive testing suite with 56 unit and integration tests. The test suite covers data validation checks, preprocessing transformations, generator loading, API routing, and model ONNX compilation.
 
 ```powershell
 # Run the test suite
 pytest -v
 
-# Run with coverage reports
+# Run tests and output coverage reports
 pytest --cov=. --cov-report=term-missing
 ```
+
+The test coverage is maintained and updated via GitHub Actions CI pipelines on every branch merge.
