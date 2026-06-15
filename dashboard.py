@@ -18,7 +18,7 @@ st.markdown(
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
     
-    html {
+    html, body, .main, [data-testid="stMain"], .stApp {
         overflow-y: scroll !important;
     }
     html, body, [class*="css"] {
