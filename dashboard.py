@@ -149,7 +149,7 @@ _init_state()
 
 # Title and subtitle blocks
 st.title("Real-Time EEG-Based Seizure Detection")
-st.markdown("**Developer: Sindhujit Roy** | Features: Real-time inference, API-driven processing, HDF5 Feature Store, DVC versioned data, Data Validation through Great Expectations, AWS deployment, Model ONNX runtime, DAGsHub-MLFlow integration for ML Model Tracking, and Historical Clinical data playback.")
+st.markdown("**Developer: Sindhujit Roy** | Features: Real-time inference, API-driven processing, HDF5 Feature Store, DVC versioned data, Data Validation through Great Expectations, AWS deployment, Model ONNX runtime, DAGsHub - MLFlow integration for ML Model Tracking, and Historical Clinical data playback.")
 
 with st.sidebar:
     st.header("Settings")
