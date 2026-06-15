@@ -82,7 +82,7 @@ def _trim_buffer(max_len: int) -> None:
         st.session_state.buffer = st.session_state.buffer[-max_len:]
 
 def _plot_eeg(buffer: list, channel_mode: str) -> None:
-    st.subheader("📊 Live EEG Waveforms")
+    st.subheader("Live EEG Waveforms")
     if not buffer:
         st.info("Start the stream to view incoming EEG signals.")
         return
@@ -115,7 +115,7 @@ def _plot_eeg(buffer: list, channel_mode: str) -> None:
     plt.close(fig)
 
 def _plot_prob(prob_history: list) -> None:
-    st.subheader("📈 Model Inference Probability")
+    st.subheader("Model Inference Probability")
     if not prob_history:
         st.info("Start the stream to track seizure probability.")
         return
@@ -148,27 +148,28 @@ def _plot_prob(prob_history: list) -> None:
 _init_state()
 
 # Title and subtitle blocks
-st.title("🧠 Production Seizure Detection Pipeline")
-st.markdown("Developed by **Roy** | End-to-End MLOps Pipeline featuring ONNX Runtime, FastAPI, and Streamlit.")
+st.title("Real-Time EEG-Based Seizure Detection")
+st.markdown("**Developer: Sindhujit Roy** | Features: Real-time inference, API-driven processing, HDF5 Feature Store, DVC versioned data, Data Validation through Great Expectations, AWS deployment, Model ONNX runtime, DAGsHub-MLFlow integration for ML Model Tracking, and Historical Clinical data playback.")
 
 with st.sidebar:
-    st.header("⚙️ Settings")
+    st.header("Settings")
     api_url = st.text_input("FastAPI `/latest` URL", value=API_URL_DEFAULT)
     polling_rate = st.slider("Poll interval (seconds)", min_value=0.05, max_value=2.0, value=0.1, step=0.05)
     window_seconds = st.slider("Rolling window (seconds)", min_value=1, max_value=60, value=15, step=1)
     timeout_s = st.slider("HTTP timeout (seconds)", min_value=0.5, max_value=10.0, value=2.0, step=0.5)
     
+    channel_options = ["Channel 1"] + [f"Channel {i}" for i in range(2, CHANNELS + 1)] + ["All channels (overlaid)"]
     channel_mode = st.selectbox(
         "EEG Electrode Mode",
-        options=["Channel 1"] + [f"Channel {i}" for i in range(2, CHANNELS + 1)] + ["All channels (overlaid)"],
-        index=0,
+        options=channel_options,
+        index=len(channel_options) - 1,
     )
     
-    if st.button("🗑️ Clear Local Buffer"):
+    if st.button("Clear Local Buffer"):
         st.session_state.buffer = []
         
     st.markdown("---")
-    st.header("🎮 EEG Waveform Simulator")
+    st.header("EEG Waveform Simulator")
     
     state_url = api_url.replace("/latest", "/simulator/state")
     
@@ -189,13 +190,13 @@ with st.sidebar:
 
     current_state = get_sim_state()
     
-    default_mode_idx = 0
+    default_mode_idx = 1  # Default to Real Patient Recording (index 1)
     default_trigger_idx = 0
-    if current_state in ["patient_normal", "patient_seizure"]:
-        default_mode_idx = 1
-        if current_state == "patient_seizure":
+    if current_state in ["normal", "seizure"]:
+        default_mode_idx = 0
+        if current_state == "seizure":
             default_trigger_idx = 1
-    elif current_state == "seizure":
+    elif current_state == "patient_seizure":
         default_trigger_idx = 1
         
     mode_choice = st.sidebar.radio(
@@ -222,11 +223,11 @@ with st.sidebar:
         st.rerun()
         
     if current_state in ["normal", "patient_normal"]:
-        st.sidebar.success(f"✅ State: Normal EEG active ({current_state})")
+        st.sidebar.success(f"State: Normal EEG active ({current_state})")
     elif current_state in ["seizure", "patient_seizure"]:
-        st.sidebar.error(f"🚨 State: Seizure active ({current_state})")
+        st.sidebar.error(f" State: Seizure active ({current_state})")
     else:
-        st.sidebar.warning("⚠️ State: Simulator disconnected")
+        st.sidebar.warning("State: Simulator disconnected")
 
     st.sidebar.markdown(
         """
@@ -239,17 +240,17 @@ with st.sidebar:
     )
 
 # Restructure main interface into Tabs
-tab_stream, tab_explorer = st.tabs(["📊 Real-Time Stream", "🔬 Clinical Dataset Explorer"])
+tab_stream, tab_explorer = st.tabs(["Real-Time Stream", "Clinical Dataset Explorer"])
 
 with tab_stream:
     # Execution Controls
     col_ctrl1, col_ctrl2, col_ctrl3 = st.columns([1, 1, 4])
     with col_ctrl1:
-        if st.button("▶️ Start Stream", use_container_width=True, disabled=st.session_state.running, key="btn_start"):
+        if st.button("Start Stream", use_container_width=True, disabled=st.session_state.running, key="btn_start"):
             st.session_state.running = True
             st.rerun()
     with col_ctrl2:
-        if st.button("⏹️ Stop Stream", use_container_width=True, disabled=not st.session_state.running, key="btn_stop"):
+        if st.button("Stop Stream", use_container_width=True, disabled=not st.session_state.running, key="btn_stop"):
             st.session_state.running = False
             st.rerun()
     with col_ctrl3:
@@ -292,12 +293,12 @@ with tab_stream:
     col_metric, col_plot = st.columns([1.2, 2.5])
 
     with col_metric:
-        st.subheader("🔬 Clinical Assessment")
+        st.subheader("Clinical Assessment")
         if prob_pct > 80:
             st.markdown(
                 f"""
                 <div style="background-color: #ff4b4b18; border: 2px solid #ff4b4b; border-radius: 12px; padding: 25px; text-align: center; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(255, 75, 75, 0.25);">
-                    <span style="color: #ff4b4b; font-size: 1.15rem; font-weight: bold; text-transform: uppercase; letter-spacing: 1.5px; display: block; margin-bottom: 10px;">🚨 SEIZURE DETECTED</span>
+                    <span style="color: #ff4b4b; font-size: 1.15rem; font-weight: bold; text-transform: uppercase; letter-spacing: 1.5px; display: block; margin-bottom: 10px;">SEIZURE DETECTED</span>
                     <h1 style="color: #ff4b4b; margin: 0; font-size: 4rem; font-family: 'JetBrains Mono', monospace; font-weight: 700;">{prob_pct:.1f}%</h1>
                     <p style="color: #ffffffdd; margin: 15px 0 0 0; font-size: 0.95rem; line-height: 1.4;">
                         High-power rhythmic synchronous delta-band discharges (2.5Hz) detected. 
@@ -339,7 +340,7 @@ with tab_stream:
         st.markdown(
             f"""
             <div style="background-color: #1e222b; border-radius: 12px; padding: 20px; border: 1px solid #2e3440;">
-                <h5 style="margin-top:0; color:#00d4ff;">⚙️ Model Properties</h5>
+                <h5 style="margin-top:0; color:#00d4ff;">Model Properties</h5>
                 <small style="color: #ffffffcc; line-height: 1.5; display:block;">
                     • <b>Backbone</b>: MobileNetV2 (Transfer Learning)<br/>
                     • <b>Input Tensor</b>: 10 Channels x 256 samples (2.0s @ 128Hz)<br/>
@@ -351,13 +352,30 @@ with tab_stream:
             unsafe_allow_html=True
         )
 
+        st.markdown(
+            f"""
+            <div style="background-color: #1e222b; border-radius: 12px; padding: 20px; border: 1px solid #2e3440; margin-top: 15px;">
+                <h5 style="margin-top:0; color:#9b51e0;"> Model Training Logs and Metrics</h5>
+                <small style="color: #ffffffcc; line-height: 1.5; display:block; margin-bottom: 12px;">
+                    Explore hyperparameters, evaluation metrics, and model runs logged publicly.
+                </small>
+                <div style="display: flex; gap: 10px;">
+                    <a href="https://dagshub.com/NeuroRoy26/seizure-detection-real-time/experiments" target="_blank" style="flex: 1; text-align: center; background-color: #00d4ff1f; color: #00d4ff; border: 1px solid #00d4ff44; padding: 6px 12px; border-radius: 8px; font-size: 0.8rem; font-weight: bold; text-decoration: none;">DAGsHub Experiment Logs</a>
+                    <a href="https://dagshub.com/NeuroRoy26/seizure-detection-real-time.mlflow/#/experiments" target="_blank" style="flex: 1; text-align: center; background-color: #9b51e01f; color: #9b51e0; border: 1px solid #9b51e044; padding: 6px 12px; border-radius: 8px; font-size: 0.8rem; font-weight: bold; text-decoration: none;">MLflow Current Model Log</a>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+
     with col_plot:
         _plot_eeg(st.session_state.buffer, channel_mode=channel_mode)
         _plot_prob(st.session_state.prob_history)
 
 
 with tab_explorer:
-    st.header("🔬 Clinical Dataset Explorer")
+    st.header("Clinical Dataset Explorer")
     st.markdown(
         """
         Explore real clinical recordings from the **CHB-MIT EEG Database** stored in the local HDF5 Feature Store. 
@@ -367,7 +385,7 @@ with tab_explorer:
     
     h5_db_path = "train_database.h5"
     if not os.path.exists(h5_db_path):
-        st.warning(f"⚠️ Feature database `train_database.h5` not found in workspace root. Run preprocess.py or dvc pull first.")
+        st.warning(f"Feature database `train_database.h5` not found in workspace root. Run preprocess.py or dvc pull first.")
     else:
         try:
             import h5py
@@ -415,7 +433,7 @@ with tab_explorer:
                 sample_data = X_all[actual_idx]
                 
                 # Plot sample data
-                st.subheader(f"📈 Real Recording Waveform (HDF5 Index: {actual_idx})")
+                st.subheader(f"Real Recording Waveform (HDF5 Index: {actual_idx})")
                 
                 col_ch, col_ctrl = st.columns([1, 4])
                 with col_ch:
@@ -455,7 +473,7 @@ with tab_explorer:
                 with col_btn:
                     st.write("") # spacing
                     st.write("")
-                    analyze_clicked = st.button("🔍 Analyze Clinical Signal", use_container_width=True, key="btn_analyze")
+                    analyze_clicked = st.button("Analyze Clinical Signal", use_container_width=True, key="btn_analyze")
                 
                 with col_res:
                     if analyze_clicked:
@@ -471,10 +489,10 @@ with tab_explorer:
                                 pred_pct = pred_prob * 100
                                 
                                 if target_label == 1:
-                                    true_diag = "🚨 ACTIVE SEIZURE"
+                                    true_diag = "ACTIVE SEIZURE"
                                     true_color = "#ff4b4b"
                                 else:
-                                    true_diag = "🌿 NORMAL (BASELINE)"
+                                    true_diag = "NORMAL (BASELINE)"
                                     true_color = "#09ab3b"
                                     
                                 pred_color = "#09ab3b"

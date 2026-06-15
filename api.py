@@ -31,7 +31,7 @@ class EEGWindow(BaseModel):
     data: list[list[float]]
 
 latest_data = None
-_simulator_state = "normal"
+_simulator_state = "patient_normal"
 
 
 def _env_float(name: str, default: float) -> float:
