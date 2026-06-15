@@ -149,7 +149,7 @@ _init_state()
 
 # Title and subtitle blocks
 st.title("Real-Time EEG-Based Seizure Detection")
-st.markdown("**Developer: Sindhujit Roy** | Features: Real-time inference, API-driven processing, HDF5 Feature Store, DVC versioned data, Data Validation through Great Expectations, AWS deployment, Model ONNX runtime, DAGsHub - MLFlow integration for ML Model Tracking, and Historical Clinical data playback.")
+st.markdown("**Developer: Sindhujit Roy** | Features: Real-time inference, API-driven processing, HDF5 Feature Store, DVC versioned data, Data Validation through Great Expectations, AWS deployment, Model ONNX runtime, DAGsHub & MLflow integration for ML Model Tracking, and Historical Clinical data playback.")
 
 with st.sidebar:
     st.header("Settings")
@@ -357,7 +357,7 @@ with tab_stream:
             <div style="background-color: #1e222b; border-radius: 12px; padding: 20px; border: 1px solid #2e3440; margin-top: 15px;">
                 <h5 style="margin-top:0; color:#9b51e0;"> Model Training Logs and Metrics</h5>
                 <small style="color: #ffffffcc; line-height: 1.5; display:block; margin-bottom: 12px;">
-                    Explore hyperparameters, evaluation metrics, and model runs logged publicly.
+                    Explore hyperparameters, evaluation metrics, and model runs logged publicly. <span style="color: #ffa500; font-weight: bold;">(Free DAGsHub Login Required)</span>
                 </small>
                 <div style="display: flex; gap: 10px;">
                     <a href="https://dagshub.com/NeuroRoy26/seizure-detection-real-time/experiments" target="_blank" style="flex: 1; text-align: center; background-color: #00d4ff1f; color: #00d4ff; border: 1px solid #00d4ff44; padding: 6px 12px; border-radius: 8px; font-size: 0.8rem; font-weight: bold; text-decoration: none;">DAGsHub Experiment Logs</a>
