@@ -1,7 +1,8 @@
 .aider*
 venv/
 artifacts/
-*.onnx
+latest.onnx
+train_database_2d.h5
 *.pt
 __pycache__/
 *.pyc
@@ -10,7 +11,4 @@ datasets/
 /test_gdrive.txt
 mlflow.db
 mlruns/
-*.h5
 scratch/
-
-
