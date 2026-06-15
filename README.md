@@ -29,13 +29,13 @@ A live Streamlit dashboard serving model predictions on clinical streaming datas
 
 ```mermaid
 flowchart TD
-    subgraph Data Pipeline (ETL & Validation)
+    subgraph "Data Pipeline (ETL & Validation)"
         EDF["Raw EDF Files (CHB-MIT)"] -->|Parallel Worker Pools| ETL["Producer-Consumer ETL (src/preprocess.py)"]
         ETL -->|Data Quality Validation| GE["Great Expectations Gate (src/validation.py)"]
         GE -->|Passed Check| FS["HDF5 Feature Store (src/feature_store.py)"]
     end
 
-    subgraph Training & MLOps
+    subgraph "Training & MLOps"
         FS -->|Single/Tune Runs| LT["Local Training (src/train.py / src/tune.py)"]
         LT -->|Log Params, Metrics & Models| MLF["MLflow Tracking (SQLite DB)"]
         
@@ -45,7 +45,7 @@ flowchart TD
         SMT -->|Export ONNX| S3Out["S3 Model Artifacts (model.tar.gz)"]
     end
 
-    subgraph Real-Time Inference
+    subgraph "Real-Time Inference"
         S3Out -->|Retrieve & Extract| ONNX["seizure_detector_mobilenetv2.onnx"]
         LT -->|Direct Export| ONNX
         
