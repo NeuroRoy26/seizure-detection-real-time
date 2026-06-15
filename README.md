@@ -1,4 +1,4 @@
-# Real-Time Seizure Detection Pipeline from Multidimensional High-frequency Live Stream
+# Real-Time Seizure Detection Pipeline from High-frequency, Multidimensional Live Stream
 
 [![CI](https://github.com/NeuroRoy26/seizure-detection-real-time/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/NeuroRoy26/seizure-detection-real-time/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/github/NeuroRoy26/seizure-detection-real-time/graph/badge.svg?token=KIM3PCNSMP)](https://codecov.io/github/NeuroRoy26/seizure-detection-real-time)
