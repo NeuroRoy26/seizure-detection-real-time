@@ -12,11 +12,16 @@ pinned: false
 
 [![CI](https://github.com/NeuroRoy26/seizure-detection-real-time/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/NeuroRoy26/seizure-detection-real-time/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/github/NeuroRoy26/seizure-detection-real-time/graph/badge.svg?token=KIM3PCNSMP)](https://codecov.io/github/NeuroRoy26/seizure-detection-real-time)
+[![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-yellow)](https://huggingface.co/spaces/NeuroRoy26/seizure-detection-real-time)
 [![MLflow](https://img.shields.io/badge/MLflow-Tracking-blueviolet)](https://mlflow.org/)
 [![AWS SageMaker](https://img.shields.io/badge/AWS-SageMaker-orange)](https://aws.amazon.com/sagemaker/)
 [![Great Expectations](https://img.shields.io/badge/Data_Quality-Great_Expectations-green)](https://greatexpectations.io/)
 
 This repository implements a production-grade, end-to-end MLOps pipeline for real-time seizure detection from multi-channel EEG signals. The architecture scales from local data processing to cloud-based distributed training, featuring robust data validation, structured feature storage, experiment tracking, and real-time ONNX inference.
+
+### 🌐 Live Production Demo
+You can interact with the live model and stream clinical datasets directly in your browser:
+👉 **[Interactive Streamlit Dashboard on Hugging Face Spaces](https://huggingface.co/spaces/NeuroRoy26/seizure-detection-real-time)**
 
 ---
 
