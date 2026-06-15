@@ -111,6 +111,8 @@ def _plot_eeg(buffer: list, channel_mode: str) -> None:
     ax.set_xlabel("Time Step (Rolling Window)", fontsize=9, color="#888888")
     ax.set_ylabel("Amplitude (μV)", fontsize=9, color="#888888")
     ax.tick_params(colors='#888888', labelsize=8)
+    ax.set_ylim(-220, 220)
+    fig.subplots_adjust(left=0.12, right=0.95, top=0.9, bottom=0.18)
     st.pyplot(fig)
     plt.close(fig)
 
@@ -142,6 +144,7 @@ def _plot_prob(prob_history: list) -> None:
     ax.set_xlabel("Time Step", fontsize=8, color="#888888")
     ax.set_ylabel("Seizure Probability", fontsize=8, color="#888888")
     ax.tick_params(colors='#888888', labelsize=8)
+    fig.subplots_adjust(left=0.12, right=0.95, top=0.9, bottom=0.25)
     st.pyplot(fig)
     plt.close(fig)
 
