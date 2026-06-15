@@ -176,24 +176,36 @@ To run the full end-to-end real-time dashboard, start the following processes in
 ```powershell
 python -m uvicorn api:app --reload
 ```
-FastAPI runs locally at `http://127.0.0.1:8000`. Access interactive API documentation at `/docs`.
+FastAPI runs locally at `http://127.0.0.1:8000`. Access the interactive API documentation at `http://127.0.0.1:8000/docs`.
 
 ### 2) Launch the Mock EEG Streamer (Terminal B)
 ```powershell
-python mock_streamer.py --hz 128 --seizure-every 60 --seizure-duration 5
+python mock_streamer.py --hz 128 --seizure-every 180 --seizure-duration 10
 ```
-Simulates real-time 10-channel streaming data, injecting mock seizure anomalies every 60 seconds and posting samples directly to the FastAPI server.
+Simulates real-time 23-channel EEG streaming data. It automatically detects and caches the local clinical HDF5 database (`train_database.h5`) if present:
+* **Synthesized Waves**: Generates multi-channel waveforms combining Delta, Theta, Alpha, and Beta frequency components with Gaussian sensor noise.
+* **Real Patient Recording**: Streams clinical patient recordings, mapping the 10 selected best channels to their positions in the 23-channel EEG template and scaling amplitudes (Volts to microvolts).
 
 ### 3) Run the Streamlit Dashboard (Terminal C)
 ```powershell
 streamlit run dashboard.py
 ```
-Open `http://localhost:8501`, press **Start**, and watch the rolling raw signal waveforms update alongside the live seizure probability outputs.
+Open `http://localhost:8501` in your browser and click **Start Stream** to visualize the real-time pipeline.
+
+### 🎮 Interactive Controls in the Dashboard
+The dashboard features an advanced control panel to interact with the streaming simulator:
+* **EEG Source Mode**: Toggle dynamically between **Synthesized Waves** and **Real Patient Recording** (clinical signals). The mock streamer detects the selection instantly.
+* **⚡ Trigger Seizure**: Manually inject a 10-second seizure event. Clicking this:
+  1. Signals the streamer to stream high-amplitude rhythmic discharges (synthesized) or actual seizure epochs (patient recordings).
+  2. Places the trigger button in a **10-second cooldown lock** showing a live countdown timer.
+  3. Automatically resets the system state back to **Normal EEG** once the 10 seconds elapse.
+* **EEG Electrode Mode**: Inspect any individual channel (Channel 1–23) or overlay all 23 channels simultaneously on a single live-updating plot.
+* **Layout Stability**: The visual layout is fully optimized to prevent layout shifts or horizontal oscillations during continuous streaming.
 
 ---
 
 ## 🧪 Testing & Code Quality
-The codebase is validated by a rigorous Pytest test suite containing **50 unit and integration tests** covering mock streaming, validation constraints, preprocessing transformations, API routes, and model serialization.
+The codebase is validated by a rigorous Pytest test suite containing **56 unit and integration tests** covering mock streaming, validation constraints, preprocessing transformations, API routes, and model serialization.
 
 ```powershell
 # Run the test suite
