@@ -71,6 +71,8 @@ def _init_state() -> None:
     st.session_state.setdefault("prob_history", [])  # list[float]: history of model prediction probabilities
     st.session_state.setdefault("connection_status", "Disconnected")
     st.session_state.setdefault("last_update_time", None)
+    st.session_state.setdefault("seizure_triggered_at", None)
+    st.session_state.setdefault("seizure_active", False)
 
 def _fetch_latest(url: str, timeout_s: float) -> dict:
     resp = requests.get(url, timeout=timeout_s)
@@ -202,18 +204,12 @@ with st.sidebar:
             requests.post(state_url, json={"state": state}, timeout=timeout_s)
         except Exception as e:
             st.sidebar.error(f"Failed to communicate with simulator: {e}")
-
     current_state = get_sim_state()
     
     default_mode_idx = 1  # Default to Real Patient Recording (index 1)
-    default_trigger_idx = 0
     if current_state in ["normal", "seizure"]:
         default_mode_idx = 0
-        if current_state == "seizure":
-            default_trigger_idx = 1
-    elif current_state == "patient_seizure":
-        default_trigger_idx = 1
-        
+         
     mode_choice = st.sidebar.radio(
         "EEG Source Mode",
         options=["Synthesized Waves", "Real Patient Recording"],
@@ -221,34 +217,54 @@ with st.sidebar:
         key="eeg_source_mode"
     )
     
-    trigger_choice = st.sidebar.radio(
-        "Clinical Signal Type",
-        options=["Normal EEG Baseline", "Trigger Seizure"],
-        index=default_trigger_idx,
-        key="clinical_signal_type"
-    )
-    
-    if mode_choice == "Synthesized Waves":
-        target_state = "seizure" if trigger_choice == "Trigger Seizure" else "normal"
+    # Handle Source Mode change when no seizure is active
+    if not st.session_state.get("seizure_active", False):
+        if mode_choice == "Synthesized Waves" and current_state != "normal" and current_state != "disconnected":
+            set_sim_state("normal")
+            st.rerun()
+        elif mode_choice == "Real Patient Recording" and current_state != "patient_normal" and current_state != "disconnected":
+            set_sim_state("patient_normal")
+            st.rerun()
+
+    # Seizure trigger with 10s cooldown and countdown
+    cooldown_remaining = 0
+    if st.session_state.get("seizure_triggered_at") is not None:
+        elapsed = time.time() - st.session_state.seizure_triggered_at
+        if elapsed < 10.0:
+            cooldown_remaining = int(10.0 - elapsed)
+        else:
+            st.session_state.seizure_triggered_at = None
+            st.session_state.seizure_active = False
+            if mode_choice == "Synthesized Waves":
+                set_sim_state("normal")
+            else:
+                set_sim_state("patient_normal")
+            st.rerun()
+
+    if cooldown_remaining > 0:
+        st.sidebar.button(f"⚡ Trigger Seizure ({cooldown_remaining}s)", disabled=True, use_container_width=True, key="btn_trigger_seizure_disabled")
     else:
-        target_state = "patient_seizure" if trigger_choice == "Trigger Seizure" else "patient_normal"
-        
-    if current_state != target_state and current_state != "disconnected":
-        set_sim_state(target_state)
-        st.rerun()
+        if st.sidebar.button("⚡ Trigger Seizure", use_container_width=True, key="btn_trigger_seizure"):
+            st.session_state.seizure_triggered_at = time.time()
+            st.session_state.seizure_active = True
+            if mode_choice == "Synthesized Waves":
+                set_sim_state("seizure")
+            else:
+                set_sim_state("patient_seizure")
+            st.rerun()
         
     if current_state in ["normal", "patient_normal"]:
-        st.sidebar.success(f"State: Normal EEG active ({current_state})")
+        st.sidebar.success(f"✅ State: Normal EEG active ({current_state})")
     elif current_state in ["seizure", "patient_seizure"]:
-        st.sidebar.error(f" State: Seizure active ({current_state})")
+        st.sidebar.error(f"🚨 State: Seizure active ({current_state})")
     else:
-        st.sidebar.warning("State: Simulator disconnected")
+        st.sidebar.warning("⚠️ State: Simulator disconnected")
 
     st.sidebar.markdown(
         """
         <small style='color: #888888;'>
         Choose <b>Real Patient Recording</b> to stream historical clinical signals from the CHB-MIT dataset. 
-        Select <b>Trigger Seizure</b> to play seizure epochs and observe model outputs live!
+        Click <b>Trigger Seizure</b> to inject a 10-second seizure window anomaly and observe model outputs live!
         </small>
         """,
         unsafe_allow_html=True
@@ -372,10 +388,10 @@ with tab_stream:
             <div style="background-color: #1e222b; border-radius: 12px; padding: 20px; border: 1px solid #2e3440; margin-top: 15px;">
                 <h5 style="margin-top:0; color:#9b51e0;"> Model Training Logs and Metrics</h5>
                 <small style="color: #ffffffcc; line-height: 1.5; display:block; margin-bottom: 12px;">
-                    Explore hyperparameters, evaluation metrics, and model runs logged publicly. <span style="color: #ffa500; font-weight: bold;">(Free DAGsHub Login Required)</span>
+                    Explore hyperparameters, evaluation metrics, and model runs logged publicly.
                 </small>
                 <div style="display: flex; gap: 10px;">
-                    <a href="https://dagshub.com/NeuroRoy26/seizure-detection-real-time/experiments" target="_blank" style="flex: 1; text-align: center; background-color: #00d4ff1f; color: #00d4ff; border: 1px solid #00d4ff44; padding: 6px 12px; border-radius: 8px; font-size: 0.8rem; font-weight: bold; text-decoration: none;">DAGsHub Experiment Logs</a>
+                    <a href="https://dagshub.com/NeuroRoy26/seizure-detection-real-time/experiments" target="_blank" style="flex: 1; text-align: center; background-color: #00d4ff1f; color: #00d4ff; border: 1px solid #00d4ff44; padding: 6px 12px; border-radius: 8px; font-size: 0.8rem; font-weight: bold; text-decoration: none;">DAGsHub Experiment Logs (Free Login Required)</a>
                     <a href="https://dagshub.com/NeuroRoy26/seizure-detection-real-time.mlflow/#/experiments" target="_blank" style="flex: 1; text-align: center; background-color: #9b51e01f; color: #9b51e0; border: 1px solid #9b51e044; padding: 6px 12px; border-radius: 8px; font-size: 0.8rem; font-weight: bold; text-decoration: none;">MLflow Current Model Log</a>
                 </div>
             </div>
