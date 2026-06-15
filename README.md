@@ -1,4 +1,6 @@
 ---
+# Hugging Face Space Metadata (Required for live deployment on Spaces)
+# This metadata block configures the Docker container and exposes port 7860
 title: Seizure Detection Real Time
 emoji: 🧠
 colorFrom: blue
