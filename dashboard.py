@@ -18,6 +18,9 @@ st.markdown(
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
     
+    html {
+        overflow-y: scroll !important;
+    }
     html, body, [class*="css"] {
         font-family: 'Outfit', sans-serif;
     }
@@ -113,7 +116,7 @@ def _plot_eeg(buffer: list, channel_mode: str) -> None:
     ax.tick_params(colors='#888888', labelsize=8)
     ax.set_ylim(-220, 220)
     fig.subplots_adjust(left=0.12, right=0.95, top=0.9, bottom=0.18)
-    st.pyplot(fig)
+    st.pyplot(fig, use_container_width=True)
     plt.close(fig)
 
 def _plot_prob(prob_history: list) -> None:
@@ -145,7 +148,7 @@ def _plot_prob(prob_history: list) -> None:
     ax.set_ylabel("Seizure Probability", fontsize=8, color="#888888")
     ax.tick_params(colors='#888888', labelsize=8)
     fig.subplots_adjust(left=0.12, right=0.95, top=0.9, bottom=0.25)
-    st.pyplot(fig)
+    st.pyplot(fig, use_container_width=True)
     plt.close(fig)
 
 _init_state()
