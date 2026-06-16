@@ -103,6 +103,12 @@ AWS credentials are dynamically loaded from environment variables or extracted f
 ### 8. Experiment Tracking (MLflow and DAGsHub)
 The local training pipeline [train.py](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/src/train.py) uses a custom Keras callback [MLflowCallback](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/src/train.py#L94) to log loss, accuracy, hyperparameters, and clinical evaluation metrics to an MLflow tracking server using an SQLite database. Grid-search hyperparameter sweeps executed via [tune.py](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/src/tune.py) log results remotely to DAGsHub using integrated MLflow tracking.
 
+Below are the logged training metric curves visualized via the MLflow dashboard:
+
+| Training Accuracy | Training Loss |
+|:---:|:---:|
+| ![Training Accuracy Curve](assets/accuracy_chart.png) | ![Training Loss Curve](assets/loss_chart.png) |
+
 ---
 
 ## Codebase Structure
