@@ -1,7 +1,7 @@
 ---
 # Hugging Face Space Metadata (Required for live deployment on Spaces)
 # This metadata block configures the Docker container and exposes port 7860
-title: Seizure Detection Real Time
+title: ML-Driven Real-Time EEG Classification for Seizure Detection
 emoji: 🧠
 colorFrom: blue
 colorTo: indigo
@@ -10,7 +10,7 @@ app_port: 7860
 pinned: false
 ---
 
-# Production-Grade Real-Time Seizure Detection Pipeline
+# ML-Driven Real-Time EEG Classification for Seizure Detection
 
 > [!NOTE]
 > The metadata table rendered at the top of this document is used exclusively by Hugging Face Spaces to configure and deploy the live interactive containerized dashboard.

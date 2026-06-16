@@ -156,7 +156,7 @@ def _plot_prob(prob_history: list) -> None:
 _init_state()
 
 # Title and subtitle blocks
-st.title("Real-Time EEG-Based Seizure Detection")
+st.title("ML-Driven Real-Time EEG Classification for Seizure Detection")
 st.markdown(
     """
     <div style="font-size: 0.88rem; color: #a3b3c9; margin-bottom: 15px; line-height: 1.6;">

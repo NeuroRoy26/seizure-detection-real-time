@@ -6,7 +6,7 @@ import signal
 
 def main():
     print("=" * 60)
-    print("🧠 SEIZURE DETECTION SUITE LAUNCHER")
+    print("ML-DRIVEN REAL-TIME EEG CLASSIFICATION LAUNCHER")
     print("=" * 60)
     
     # Track processes
