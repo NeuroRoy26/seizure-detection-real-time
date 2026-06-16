@@ -32,7 +32,7 @@ A live Streamlit dashboard serving model predictions on clinical streaming datas
 
 ## Architecture and Data Flow
 
-![System Architecture and Data Flow](assets/architecture_diagram.png)
+![System Architecture and Data Flow](assets/system_architecture.png)
 
 ---
 
