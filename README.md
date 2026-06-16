@@ -35,28 +35,28 @@ A live Streamlit dashboard serving model predictions on clinical streaming datas
 ```mermaid
 flowchart TD
     subgraph "Data Pipeline (ETL & Validation)"
-        EDF["Raw EDF Files (CHB-MIT)"] -->|Parallel Worker Pools| ETL["Producer-Consumer ETL (src/preprocess.py)"]
-        ETL -->|Data Quality Validation| GE["Great Expectations Gate (src/validation.py)"]
-        GE -->|Passed Check| FS["HDF5 Feature Store (src/feature_store.py)"]
+        EDF["Raw EDF Files (CHB-MIT)"] -- "Parallel Worker Pools" --> ETL["Producer-Consumer ETL (src/preprocess.py)"]
+        ETL -- "Data Quality Validation" --> GE["Great Expectations Gate (src/validation.py)"]
+        GE -- "Passed Check" --> FS["HDF5 Feature Store (src/feature_store.py)"]
     end
 
     subgraph "Training & MLOps"
-        FS -->|Single/Tune Runs| LT["Local Training (src/train.py / src/tune.py)"]
-        LT -->| "Log Params, Metrics & Models" | MLF["MLflow Tracking (SQLite DB)"]
+        FS -- "Single/Tune Runs" --> LT["Local Training (src/train.py / src/tune.py)"]
+        LT -- "Log Params, Metrics & Models" --> MLF["MLflow Tracking (SQLite DB)"]
         
-        FS -->|Upload to S3| S3["AWS S3 Data Bucket"]
-        S3 -->|Orchestrated Job| SM["AWS SageMaker Training (ml.m5.large / CPU-GPU)"]
-        SM -->|Train MobileNetV2 Transfer Learning| SMT["sagemaker_train.py"]
-        SMT -->|Export ONNX| S3Out["S3 Model Artifacts (model.tar.gz)"]
+        FS -- "Upload to S3" --> S3["AWS S3 Data Bucket"]
+        S3 -- "Orchestrated Job" --> SM["AWS SageMaker Training (ml.m5.large / CPU-GPU)"]
+        SM -- "Train MobileNetV2 Transfer Learning" --> SMT["sagemaker_train.py"]
+        SMT -- "Export ONNX" --> S3Out["S3 Model Artifacts (model.tar.gz)"]
     end
 
     subgraph "Real-Time Inference"
-        S3Out -->| "Retrieve & Extract" | ONNX["seizure_detector_mobilenetv2.onnx"]
-        LT -->|Direct Export| ONNX
+        S3Out -- "Retrieve & Extract" --> ONNX["seizure_detector_mobilenetv2.onnx"]
+        LT -- "Direct Export" --> ONNX
         
-        ONNX -->|ONNX Runtime Inference| API["FastAPI Backend (api.py)"]
-        Streamer["Mock EEG Streamer (mock_streamer.py)"] -->| "POST /ingest (10-Ch Signal)" | API
-        API -->| "GET /latest (Probabilities)" | Dash["Streamlit Dashboard (dashboard.py)"]
+        ONNX -- "ONNX Runtime Inference" --> API["FastAPI Backend (api.py)"]
+        Streamer["Mock EEG Streamer (mock_streamer.py)"] -- "POST /ingest (10-Ch Signal)" --> API
+        API -- "GET /latest (Probabilities)" --> Dash["Streamlit Dashboard (dashboard.py)"]
     end
 ```
 
