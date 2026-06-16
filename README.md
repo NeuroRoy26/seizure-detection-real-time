@@ -160,6 +160,15 @@ Clinical seizure data contains an inherent class imbalance (majority normal/inte
 2. **Stratification**: Datasets are divided into train and test sets using stratified splits to maintain matching seizure proportions in both sets.
 3. **Class Weighting**: The loss function dynamically scales gradients during training using balanced class weights computed via scikit-learn.
 
+### Architectural Decision Record (ADR): Local HDF5 vs. Feast Feature Store
+* **Context**: Evaluating feature store solutions for raw multi-channel EEG signal tensors and 9-dimensional statistical features.
+* **Decision**: A local HDF5 file-backed Feature Store was chosen over Feast.
+* **Rationale**:
+  * **Tensor Compatibility**: HDF5 supports native storage of high-frequency multidimensional tensors `(N, channels, samples)` without serialization overhead, whereas Feast requires wrapping arrays in serialized binary blobs.
+  * **Zero Operational Overhead**: Retaining local HDF5 avoids running network-bound database clusters (Redis, DynamoDB, or PostgreSQL) and feature registries, maintaining a self-contained local repository.
+  * **Inference Pipeline Alignment**: The real-time FastAPI backend consumes data in-memory via a rolling buffer and ONNX runtime session, entirely bypassing database lookups during inference.
+* **Feast Scalability Path**: Feast can be introduced strictly for **engineered tabular features** (the 9 statistical features extracted from [features.py](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/src/features.py)) if deploying to distributed online serving environments.
+
 ---
 
 ## Model Performance and Validation Metrics
@@ -180,6 +189,22 @@ The clinical classification performance of the 2D-CNN model was evaluated on bal
 * **Recall (79.20%)**: Reaches high seizure sensitivity on unseen validation data, satisfying patient safety constraints.
 * **Generalization Variance**: The variance between training metrics (99.34% Acc) and validation metrics (89.91% Acc) indicates a minor generalization gap. This is typical in multi-channel EEG signals due to patient-specific waveforms and transient motion artifacts.
 * **Class Weighting Effectiveness**: Adjusting class weights during compilation effectively prevented the model from bias towards the majority normal classes, stabilizing the F1-Score at 0.8396.
+
+---
+
+## Hyperparameter Tuning and Grid Search Sweeps
+
+To automatically optimize network capacity and prevent overfitting, the repository implements a grid search sweep in [tune.py](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/src/tune.py).
+
+### Search Space Configuration
+The optimization sweeps iterate over a predefined grid:
+* **Learning Rates**: `[0.005, 0.001]` (Adam optimizer)
+* **Batch Sizes**: `[32, 64]`
+* **Epochs per trial**: `3` (for verification, configurable via [config.yaml](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/config.yaml))
+
+### Experiment Isolation and Tracking
+* **Run Deep Copying**: The configuration dictionary is cloned using `copy.deepcopy` for each trial to prevent hyperparameter state contamination.
+* **Nested MLflow Logging**: Every grid point is executed as a separate nested trial run in MLflow. This records learning dynamics, train/validation losses, and final validation metrics under the centralized SQLite server (`mlflow.db`) and pushes them to DAGsHub for comparative visualization.
 
 ---
 
