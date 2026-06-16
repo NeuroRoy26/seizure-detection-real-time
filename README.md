@@ -12,6 +12,9 @@ pinned: false
 
 # Production-Grade Real-Time Seizure Detection Pipeline
 
+> [!NOTE]
+> The metadata table rendered at the top of this document is used exclusively by Hugging Face Spaces to configure and deploy the live interactive containerized dashboard.
+
 [![CI](https://github.com/NeuroRoy26/seizure-detection-real-time/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/NeuroRoy26/seizure-detection-real-time/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/github/NeuroRoy26/seizure-detection-real-time/graph/badge.svg?token=KIM3PCNSMP)](https://codecov.io/github/NeuroRoy26/seizure-detection-real-time)
 [![Hugging Face Spaces](https://img.shields.io/badge/Hugging_Face-Spaces-blue)](https://huggingface.co/spaces/NeuroRoy26/seizure-detection-real-time)
@@ -39,7 +42,7 @@ flowchart TD
 
     subgraph "Training & MLOps"
         FS -->|Single/Tune Runs| LT["Local Training (src/train.py / src/tune.py)"]
-        LT -->|Log Params, Metrics & Models| MLF["MLflow Tracking (SQLite DB)"]
+        LT -->| "Log Params, Metrics & Models" | MLF["MLflow Tracking (SQLite DB)"]
         
         FS -->|Upload to S3| S3["AWS S3 Data Bucket"]
         S3 -->|Orchestrated Job| SM["AWS SageMaker Training (ml.m5.large / CPU-GPU)"]
@@ -48,12 +51,12 @@ flowchart TD
     end
 
     subgraph "Real-Time Inference"
-        S3Out -->|Retrieve & Extract| ONNX["seizure_detector_mobilenetv2.onnx"]
+        S3Out -->| "Retrieve & Extract" | ONNX["seizure_detector_mobilenetv2.onnx"]
         LT -->|Direct Export| ONNX
         
         ONNX -->|ONNX Runtime Inference| API["FastAPI Backend (api.py)"]
-        Streamer["Mock EEG Streamer (mock_streamer.py)"] -->|POST /ingest (10-Ch Signal)| API
-        API -->|GET /latest (Probabilities)| Dash["Streamlit Dashboard (dashboard.py)"]
+        Streamer["Mock EEG Streamer (mock_streamer.py)"] -->| "POST /ingest (10-Ch Signal)" | API
+        API -->| "GET /latest (Probabilities)" | Dash["Streamlit Dashboard (dashboard.py)"]
     end
 ```
 
