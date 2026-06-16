@@ -266,6 +266,12 @@ with st.sidebar:
         Choose <b>Real Patient Recording</b> to stream historical clinical signals from the CHB-MIT dataset. 
         Click <b>Trigger Seizure</b> to inject a 10-second seizure window anomaly and observe model outputs live!
         </small>
+        <hr style='margin: 15px 0; border: none; border-top: 1px solid #444444;'>
+        <div style='text-align: center;'>
+            <a href='https://github.com/NeuroRoy26/seizure-detection-real-time' target='_blank' style='text-decoration: none;'>
+                <img src='https://img.shields.io/badge/GitHub-Repository-181717?style=for-the-badge&logo=github&logoColor=white' alt='GitHub Repository' style='height: 28px;'>
+            </a>
+        </div>
         """,
         unsafe_allow_html=True
     )
