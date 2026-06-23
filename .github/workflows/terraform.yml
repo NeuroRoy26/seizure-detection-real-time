@@ -23,6 +23,9 @@ jobs:
       AWS_ACCESS_KEY_ID: "mock_key_for_testing"
       AWS_SECRET_ACCESS_KEY: "mock_secret_for_testing"
       AWS_DEFAULT_REGION: "eu-central-1"
+      TF_VAR_skip_credentials_validation: true
+      TF_VAR_skip_requesting_account_id: true
+      TF_VAR_skip_metadata_api_check: true
 
     steps:
       - name: Checkout Code
