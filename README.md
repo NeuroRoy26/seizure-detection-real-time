@@ -265,6 +265,43 @@ The pipeline is adapted for interactive execution on shared cloud infrastructure
 
 ---
 
+## Infrastructure as Code (Terraform)
+
+To manage the static AWS resources required for model training and clinical dataset storage, the repository integrates a production-grade **Infrastructure as Code (Terraform)** configuration located in the [terraform/](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/terraform) directory.
+
+### 1. Managed AWS Resources
+* **EEG Data Store**: An S3 bucket (`seizure-detection-data-dev`) with server-side encryption (AES256), strict public access blocks, and versioning enabled to prevent data loss or clinical signal tampering.
+* **SageMaker Model Repository**: An S3 bucket (`seizure-detection-models-dev`) configured with public access blocks to store trained model weights and ONNX model artifacts.
+* **SageMaker Execution Role**: An IAM role assumable by the AWS SageMaker service (`sagemaker.amazonaws.com`), granting access to data/model S3 buckets and CloudWatch logging.
+* **Developer/CI-CD Access Policy**: A reusable IAM policy granting permission to upload datasets, manage model assets, and trigger SageMaker training jobs.
+* **State Locking**: Configured with a remote S3 backend (`neuroroy-tfstate-bucket`) and DynamoDB (`neuroroy-tfstate-lock`) for state file isolation and lock management.
+
+### 2. Native Unit Testing
+The infrastructure is verified using Terraform 1.6+ native unit testing. Located in [s3_and_iam.tftest.hcl](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/terraform/tests/s3_and_iam.tftest.hcl), the test suite performs plan-based assertions on naming patterns, encryption algorithms, metadata access controls, and IAM trust relationships:
+```powershell
+# Run native unit tests locally (with mock AWS credentials)
+cd terraform
+$env:AWS_ACCESS_KEY_ID="mock_key"
+$env:AWS_SECRET_ACCESS_KEY="mock_secret"
+$env:AWS_DEFAULT_REGION="eu-central-1"
+$env:TF_VAR_skip_credentials_validation="true"
+$env:TF_VAR_skip_requesting_account_id="true"
+$env:TF_VAR_skip_metadata_api_check="true"
+
+terraform init -backend=false
+terraform test
+```
+
+### 3. Automated CI/CD Pipeline
+Every pull request or commit affecting the `terraform/` configurations triggers a dedicated GitHub Actions workflow (`.github/workflows/terraform.yml`) that automates code quality gates:
+1. **Style check**: `terraform fmt -check` validates layout and indentation.
+2. **Offline Initialization**: `terraform init -backend=false` resolves provider dependencies.
+3. **Syntax Validation**: `terraform validate` ensures valid resource declarations.
+4. **Mocked Unit Testing**: Runs `terraform test` using mocked credentials and provider verification skips (`TF_VAR_skip_credentials_validation = true`).
+5. **Security Scanning**: Runs the `Trivy` security scanner (IaC mode) to block any high or critical security misconfigurations before deployment.
+
+---
+
 ## Testing and Code Quality
 
 The codebase utilizes a comprehensive testing suite with 56 unit and integration tests. The test suite covers data validation checks, preprocessing transformations, generator loading, API routing, and model ONNX compilation.
