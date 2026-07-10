@@ -21,8 +21,9 @@ pinned: false
 [![MLflow](https://img.shields.io/badge/MLflow-Tracking-blueviolet)](https://mlflow.org/)
 [![AWS SageMaker](https://img.shields.io/badge/AWS-SageMaker-orange)](https://aws.amazon.com/sagemaker/)
 [![Great Expectations](https://img.shields.io/badge/Data_Quality-Great_Expectations-green)](https://greatexpectations.io/)
+[![Terraform](https://shields.io)](https://terraform.io)
 
-This repository contains a production-grade, end-to-end MLOps pipeline for real-time seizure detection from multi-channel EEG signals. The system is designed to scale from local processing on clinical datasets to distributed training in the cloud, featuring automated data quality validation, structured feature storage, experiment tracking, containerized orchestration, and low-latency ONNX-based real-time inference.
+This repository contains a production-grade, end-to-end MLOps pipeline for real-time seizure detection from multi-channel EEG signals. The system is designed to scale from local processing on clinical datasets to distributed training in the cloud, featuring automated data quality validation, structured feature storage, experiment tracking, containerized orchestration, and low-latency ONNX-based real-time inference, all encompassed in a Infrastructure-as-Code fashion.
 
 ### Interactive Live Demo
 A live Streamlit dashboard serving model predictions on clinical streaming datasets is available at:
