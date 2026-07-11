@@ -11,3 +11,6 @@
 !config.yaml
 !seizure_detector_mobilenetv2.onnx
 !train_database.h5
+!src/
+!src/**
+
