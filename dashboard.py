@@ -65,6 +65,19 @@ plt.style.use('dark_background')
 API_URL_DEFAULT = os.environ.get("API_URL", "http://127.0.0.1:8000/latest")
 CHANNELS = 23
 
+import yaml
+# Load master config to check LLM enablement
+config = {}
+if os.path.exists("config.yaml"):
+    try:
+        with open("config.yaml", "r") as f:
+            config = yaml.safe_load(f)
+    except Exception:
+        pass
+
+llm_enabled = config.get("llm", {}).get("enabled", False)
+BEST_CHANNELS = config.get("signal_processing", {}).get("best_indices", [0, 1, 5, 2, 13, 18, 14, 8, 19, 16])
+
 def _init_state() -> None:
     st.session_state.setdefault("running", False)
     st.session_state.setdefault("buffer", [])  # list[list[float]]: 2D array of (time, channels)
@@ -73,6 +86,7 @@ def _init_state() -> None:
     st.session_state.setdefault("last_update_time", None)
     st.session_state.setdefault("seizure_triggered_at", None)
     st.session_state.setdefault("seizure_active", False)
+    st.session_state.setdefault("chat_history", [])
 
 def _fetch_latest(url: str, timeout_s: float) -> dict:
     resp = requests.get(url, timeout=timeout_s)
@@ -277,7 +291,10 @@ with st.sidebar:
     )
 
 # Restructure main interface into Tabs
-tab_stream, tab_explorer = st.tabs(["Real-Time Stream", "Clinical Dataset Explorer"])
+if llm_enabled:
+    tab_stream, tab_explorer, tab_llm = st.tabs(["Real-Time Stream", "Clinical Dataset Explorer", "AI Assistant & Reporting"])
+else:
+    tab_stream, tab_explorer = st.tabs(["Real-Time Stream", "Clinical Dataset Explorer"])
 
 with tab_stream:
     # Execution Controls
@@ -560,6 +577,232 @@ with tab_explorer:
                             st.error(f"Failed to communicate with classification API: {e}")
         except Exception as e:
             st.error(f"Failed to load dataset: {e}")
+
+if llm_enabled:
+    with tab_llm:
+        st.header("AI Clinical Assistant & Reporting")
+        st.markdown(
+            """
+            This module integrates **Hugging Face Cloud Inference API** serving open-source Large Language Models (like `Qwen2.5-7B-Instruct`).
+            Use it to generate clinical SOAP reports, explain EEG features, or chat with the AI assistant.
+            """
+        )
+        
+        # Check LLM connection status
+        llm_health_url = api_url.replace("/latest", "/llm/health")
+        llm_report_url = api_url.replace("/latest", "/llm/report")
+        llm_explain_url = api_url.replace("/latest", "/llm/explain")
+        
+        try:
+            health_resp = requests.get(llm_health_url, timeout=timeout_s)
+            if health_resp.status_code == 200:
+                health_data = health_resp.json()
+                status = health_data.get("status", "unknown")
+                msg = health_data.get("message", "")
+            else:
+                status = "error"
+                msg = f"HTTP Error {health_resp.status_code}"
+        except Exception as e:
+            status = "error"
+            msg = f"Failed to connect to FastAPI LLM route: {str(e)}"
+            
+        if status == "disabled":
+            st.warning("⚠️ LLM features are disabled in config.yaml.")
+            st.info("Enable `llm.enabled` in `config.yaml` to run.")
+        elif status == "missing_token":
+            st.error("❌ Hugging Face Access Token (HF_TOKEN) is not set.")
+            st.markdown(
+                """
+                Please set the **`HF_TOKEN`** environment variable in your terminal before running:
+                ```powershell
+                $env:HF_TOKEN="your_hugging_face_token_here"
+                python start.py
+                ```
+                *Note: You can generate a free token in your Hugging Face account under Settings > Access Tokens.*
+                """
+            )
+        elif status == "loading":
+            st.warning(f"🔄 Model Booting: {msg}")
+            if st.button("Refresh Connection Status"):
+                st.rerun()
+        elif status == "error":
+            st.error(f"❌ Connection Error: {msg}")
+        elif status == "ok":
+            st.success(f"✅ Connected to Hugging Face Cloud LLM ({config.get('llm', {}).get('model_id', 'Qwen/Qwen2.5-7B-Instruct')})")
+            
+            # Divide into columns for different tasks
+            col_l, col_r = st.columns(2)
+            
+            with col_l:
+                st.subheader("Generate Clinical SOAP Report")
+                st.markdown("Compile current telemetry readings, seizure alert statuses, and channel features into a clinical report draft.")
+                
+                # Check if buffer has data
+                if not st.session_state.buffer:
+                    st.info("No active EEG data stream to report. Start the stream first.")
+                else:
+                    if st.button("Draft Clinical SOAP Report", use_container_width=True, key="btn_draft_report"):
+                        # Extract latest features
+                        try:
+                            from src.features import extract_eeg_features
+                            buffer_np = np.array(st.session_state.buffer)
+                            
+                            # Standardize shape to (channels, samples)
+                            if len(buffer_np) >= 256:
+                                window_raw = buffer_np[-256:, :].T # (time, channels) -> (channels, time)
+                                # Clamp to first 20 channels then best 10 channels
+                                if window_raw.shape[0] >= 20:
+                                    window_raw = window_raw[:20, :]
+                                    best_channels_data = window_raw[BEST_CHANNELS, :] # (10, 256)
+                                    feats = extract_eeg_features(best_channels_data, sfreq=128.0) # (10, 9)
+                                    
+                                    # Create list of dict features
+                                    feats_list = []
+                                    for ch_idx, ch_feats in enumerate(feats):
+                                        feats_list.append({
+                                            "channel": str(BEST_CHANNELS[ch_idx] + 1),
+                                            "variance": float(ch_feats[0]),
+                                            "rms": float(ch_feats[1]),
+                                            "delta": float(ch_feats[4]),
+                                            "theta": float(ch_feats[5])
+                                        })
+                                else:
+                                    feats_list = None
+                            else:
+                                feats_list = None
+                        except Exception as e:
+                            st.error(f"Error computing EEG features: {e}")
+                            feats_list = None
+                            
+                        # Send request
+                        latest_prob = st.session_state.prob_history[-1] if st.session_state.prob_history else 0.0
+                        
+                        # Get current simulator state
+                        sim_state = "patient_normal"
+                        try:
+                            sim_resp = requests.get(api_url.replace("/latest", "/simulator/state"), timeout=timeout_s)
+                            if sim_resp.status_code == 200:
+                                sim_state = sim_resp.json().get("state", "patient_normal")
+                        except Exception:
+                            pass
+                            
+                        with st.spinner("LLM generating clinical draft..."):
+                            try:
+                                payload = {
+                                    "seizure_probability": latest_prob,
+                                    "active_state": sim_state,
+                                    "features": feats_list
+                                }
+                                report_resp = requests.post(llm_report_url, json=payload, timeout=30.0)
+                                if report_resp.status_code == 200:
+                                    st.session_state.latest_report = report_resp.json().get("report", "No report text returned.")
+                                else:
+                                    st.error(f"Failed to generate report: {report_resp.text}")
+                            except Exception as ex:
+                                st.error(f"API request failed: {ex}")
+                                
+                if "latest_report" in st.session_state:
+                    st.markdown("### Generated Report Draft")
+                    st.markdown(
+                        f"""
+                        <div style="background-color: #1e222b; border-radius: 8px; padding: 15px; border: 1px solid #2e3440; max-height: 400px; overflow-y: auto;">
+                            {st.session_state.latest_report}
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+                    st.download_button(
+                        label="Download Report as Text",
+                        data=st.session_state.latest_report,
+                        file_name=f"clinical_eeg_report_{time.strftime('%Y%m%d_%H%M%S')}.md",
+                        mime="text/markdown"
+                    )
+                    
+            with col_r:
+                st.subheader("Explain Channel Metrics")
+                st.markdown("Select an active electrode to interpret its current mathematical features in clinical neurophysiology terms.")
+                
+                # Check if buffer has data
+                if not st.session_state.buffer:
+                    st.info("No active EEG data stream. Start the stream first.")
+                else:
+                    explain_ch_name = st.selectbox(
+                        "Electrode to Explain",
+                        options=[f"Channel {idx+1} (Best index: {val})" for idx, val in enumerate(BEST_CHANNELS)]
+                    )
+                    explain_idx = int(explain_ch_name.split()[1]) - 1 # 0-indexed best channel select
+                    
+                    if st.button("Interpret Channel Features", use_container_width=True, key="btn_explain_channel"):
+                        # Extract latest features for this specific channel
+                        try:
+                            from src.features import extract_features_for_channel
+                            buffer_np = np.array(st.session_state.buffer)
+                            if len(buffer_np) >= 256:
+                                window_raw = buffer_np[-256:, :].T # (time, channels) -> (channels, time)
+                                # Grab original channel index
+                                orig_ch_idx = BEST_CHANNELS[explain_idx]
+                                ch_data = window_raw[orig_ch_idx, :]
+                                ch_feats = extract_features_for_channel(ch_data, sfreq=128.0)
+                                
+                                feat_dict = {
+                                    "variance": float(ch_feats[0]),
+                                    "rms": float(ch_feats[1]),
+                                    "line_length": float(ch_feats[2]),
+                                    "kurtosis": float(ch_feats[3]),
+                                    "delta_relative": float(ch_feats[4]),
+                                    "theta_relative": float(ch_feats[5]),
+                                    "alpha_relative": float(ch_feats[6]),
+                                    "beta_relative": float(ch_feats[7]),
+                                    "gamma_relative": float(ch_feats[8]),
+                                }
+                                
+                                with st.spinner("AI explaining mathematical metrics..."):
+                                    explain_payload = {
+                                        "channel_idx": orig_ch_idx,
+                                        "features": feat_dict
+                                    }
+                                    explain_resp = requests.post(llm_explain_url, json=explain_payload, timeout=25.0)
+                                    if explain_resp.status_code == 200:
+                                        st.session_state.latest_explanation = explain_resp.json().get("explanation", "No explanation text returned.")
+                                    else:
+                                        st.error(f"Explanation API failed: {explain_resp.text}")
+                            else:
+                                st.warning("Not enough samples in buffer yet (needs at least 256 samples / 2 seconds).")
+                        except Exception as e:
+                            st.error(f"Failed to calculate channel features: {e}")
+                            
+                if "latest_explanation" in st.session_state:
+                    st.markdown("### AI Physiological Explanation")
+                    st.info(st.session_state.latest_explanation)
+            
+            st.markdown("---")
+            st.subheader("Conversational EEG Assistant")
+            st.markdown("Ask general questions about the patient's alert history, model configurations, or general clinical neurophysiology of epilepsy.")
+            
+            # Display chat messages
+            for message in st.session_state.chat_history:
+                with st.chat_message(message["role"]):
+                    st.markdown(message["content"])
+                    
+            if chat_prompt := st.chat_input("Ask the AI EEG Assistant a question..."):
+                st.session_state.chat_history.append({"role": "user", "content": chat_prompt})
+                with st.chat_message("user"):
+                    st.markdown(chat_prompt)
+                    
+                with st.spinner("Thinking..."):
+                    try:
+                        chat_url = api_url.replace("/latest", "/llm/chat")
+                        chat_resp = requests.post(chat_url, json={"prompt": chat_prompt}, timeout=25.0)
+                        if chat_resp.status_code == 200:
+                            response_text = chat_resp.json().get("response", "No response text returned.")
+                        else:
+                            response_text = f"API error ({chat_resp.status_code}): {chat_resp.text}"
+                    except Exception as ex:
+                        response_text = f"Failed to send request to backend: {ex}"
+                        
+                st.session_state.chat_history.append({"role": "assistant", "content": response_text})
+                with st.chat_message("assistant"):
+                    st.markdown(response_text)
 
 # Streamlit-native loop: sleep and rerun if stream is running
 if st.session_state.running:

@@ -36,3 +36,9 @@ mlflow:
   repo_name: "seizure-detection-real-time"
   experiment_name: "seizure-detection-2d-cnn"
   tracking_uri: "sqlite:///mlflow.db"
+
+llm:
+  enabled: true
+  model_id: "Qwen/Qwen2.5-7B-Instruct"
+  api_url: "https://api-inference.huggingface.co/models"
+

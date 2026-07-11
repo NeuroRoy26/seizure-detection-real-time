@@ -8,6 +8,7 @@ from typing import Optional, Tuple
 from collections import deque
 
 from model_fetch import download_if_needed
+from src.llm_client import LLMClient
 
 # Load Master Configuration if present
 config = {}
@@ -20,9 +21,19 @@ if os.path.exists("config.yaml"):
 
 
 app = FastAPI()
+llm_client = LLMClient()
 
 class EEGData(BaseModel):
     data: list[float]
+
+class LLMReportRequest(BaseModel):
+    seizure_probability: float
+    active_state: str
+    features: Optional[list[dict]] = None
+
+class LLMExplainRequest(BaseModel):
+    channel_idx: int
+    features: dict[str, float]
 
 class SimulatorState(BaseModel):
     state: str
@@ -229,3 +240,48 @@ async def classify_window(window: EEGWindow):
     exps = np.exp(logits - np.max(logits))
     probs = exps / np.sum(exps)
     return {"seizure_probability": float(probs[1])}
+
+@app.get("/llm/health")
+async def get_llm_health():
+    return llm_client.check_health()
+
+@app.post("/llm/report")
+async def generate_llm_report(req: LLMReportRequest):
+    if not llm_client.enabled:
+        return {"error": "LLM features are disabled in config.yaml."}
+    report = llm_client.generate_report(
+        seizure_probability=req.seizure_probability,
+        active_state=req.active_state,
+        features_list=req.features
+    )
+    return {"report": report}
+
+@app.post("/llm/explain")
+async def explain_llm_features(req: LLMExplainRequest):
+    if not llm_client.enabled:
+        return {"error": "LLM features are disabled in config.yaml."}
+    explanation = llm_client.explain_features(
+        channel_idx=req.channel_idx,
+        features=req.features
+    )
+    return {"explanation": explanation}
+
+class LLMChatRequest(BaseModel):
+    prompt: str
+
+@app.post("/llm/chat")
+async def explain_llm_chat(req: LLMChatRequest):
+    if not llm_client.enabled:
+        return {"error": "LLM features are disabled in config.yaml."}
+    prompt = f"""<system>
+You are an expert clinical neurophysiologist and AI engineering assistant. 
+You are answering questions from a doctor or researcher who is using the Real-Time EEG Seizure Detection dashboard.
+Keep your answers professional, concise, and clinically relevant.
+Do not include conversational preambles.
+</system>
+
+User: {req.prompt}
+
+Assistant:"""
+    response_text = llm_client._query_api(prompt, max_tokens=400, temperature=0.7)
+    return {"response": response_text}
