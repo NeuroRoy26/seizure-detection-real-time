@@ -10,6 +10,19 @@ class LLMClient:
     """
     def __init__(self, config_path: str = "config.yaml"):
         self.config_path = config_path
+        
+        # Load local .env file if it exists (for local development/testing)
+        if os.path.exists(".env"):
+            try:
+                with open(".env", "r") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith("#") and "=" in line:
+                            k, v = line.split("=", 1)
+                            os.environ[k.strip()] = v.strip()
+            except Exception:
+                pass
+
         self.enabled = False
         self.model_id = "llama-3.1-8b-instant"
         self.api_url_base = "https://api.groq.com/openai/v1"
