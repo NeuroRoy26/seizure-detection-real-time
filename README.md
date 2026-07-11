@@ -22,8 +22,9 @@ pinned: false
 [![AWS SageMaker](https://img.shields.io/badge/AWS-SageMaker-orange)](https://aws.amazon.com/sagemaker/)
 [![Great Expectations](https://img.shields.io/badge/Data_Quality-Great_Expectations-green)](https://greatexpectations.io/)
 [![Terraform](https://img.shields.io/badge/Terraform-IaC-623CE4?logo=terraform&logoColor=white)](https://www.terraform.io/)
+[![Groq LLM](https://img.shields.io/badge/LLM_Assistant-Groq_Llama--3.1-orange?logo=groq&logoColor=white)](https://groq.com/)
 
-This repository contains a production-grade, end-to-end MLOps pipeline for real-time seizure detection from multi-channel EEG signals. The system is designed to scale from local processing on clinical datasets to distributed training in the cloud, featuring automated data quality validation, structured feature storage, experiment tracking, containerized orchestration, and low-latency ONNX-based real-time inference, all encompassed in a Infrastructure-as-Code fashion.
+This repository contains a production-grade, end-to-end MLOps pipeline for real-time seizure detection from multi-channel EEG signals. The system is designed to scale from local processing on clinical datasets to distributed training in the cloud, featuring automated data quality validation, structured feature storage, experiment tracking, containerized orchestration, low-latency ONNX-based real-time inference, and a Groq-powered LLM Clinical Assistant for real-time SOAP report generation and feature explanation—all managed within an Infrastructure-as-Code framework.
 
 ### Interactive Live Demo
 A live Streamlit dashboard serving model predictions on clinical streaming datasets is available at:
@@ -34,6 +35,10 @@ A live Streamlit dashboard serving model predictions on clinical streaming datas
 ## Architecture and Data Flow
 
 ![System Architecture and Data Flow](assets/system_architecture.png)
+
+The project leverages a dual-pathway architecture:
+1. **Core MLOps Pipeline**: Raw multi-channel EEG signals are validated (Great Expectations), preprocessed concurrently, and stored locally in HDF5. The training pipeline outputs optimized ONNX models deployed to Hugging Face Spaces for sub-second inference.
+2. **AI Clinical Assistant Layer**: Inference outputs and EEG telemetry features are routed asynchronously to a Groq-powered Large Language Model (LLM) endpoint. The LLM processes these signals to generate structured clinical SOAP reports and interpret specific frequency band activities for physicians.
 
 ---
 
