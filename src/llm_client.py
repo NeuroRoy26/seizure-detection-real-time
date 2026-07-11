@@ -12,7 +12,7 @@ class LLMClient:
         self.config_path = config_path
         self.enabled = False
         self.model_id = "Qwen/Qwen2.5-7B-Instruct"
-        self.api_url_base = "https://api-inference.huggingface.co/models"
+        self.api_url_base = "https://router.huggingface.co/v1"
         self.hf_token = os.environ.get("HF_TOKEN", "").strip()
         
         self.load_config()
@@ -31,7 +31,7 @@ class LLMClient:
 
     @property
     def api_url(self) -> str:
-        return f"{self.api_url_base.rstrip('/')}/{self.model_id}"
+        return f"{self.api_url_base.rstrip('/')}/chat/completions"
 
     def check_health(self) -> Dict[str, Any]:
         """
@@ -46,8 +46,9 @@ class LLMClient:
             # Send a minimal test request to verify authentication & model availability
             headers = {"Authorization": f"Bearer {self.hf_token}"}
             payload = {
-                "inputs": "Hello", 
-                "parameters": {"max_new_tokens": 5}
+                "model": self.model_id,
+                "messages": [{"role": "user", "content": "Hello"}],
+                "max_tokens": 5
             }
             # Set a low timeout for the health check
             resp = requests.post(self.api_url, json=payload, headers=headers, timeout=5.0)
@@ -65,7 +66,7 @@ class LLMClient:
 
     def _query_api(self, prompt: str, max_tokens: int = 512, temperature: float = 0.7) -> str:
         """
-        Queries the Hugging Face Serverless Inference API.
+        Queries the Hugging Face Serverless Inference API using chat completions format.
         """
         if not self.enabled:
             return "LLM features are currently disabled in configuration."
@@ -74,23 +75,23 @@ class LLMClient:
             
         headers = {"Authorization": f"Bearer {self.hf_token}"}
         payload = {
-            "inputs": prompt,
-            "parameters": {
-                "max_new_tokens": max_tokens,
-                "temperature": temperature,
-                "return_full_text": False
-            }
+            "model": self.model_id,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "temperature": temperature
         }
         
         try:
             resp = requests.post(self.api_url, json=payload, headers=headers, timeout=25.0)
             if resp.status_code == 200:
                 data = resp.json()
-                if isinstance(data, list) and len(data) > 0 and "generated_text" in data[0]:
-                    return data[0]["generated_text"].strip()
+                if "choices" in data and len(data["choices"]) > 0:
+                    message = data["choices"][0].get("message", {})
+                    content = message.get("content", "")
+                    if content:
+                        return content.strip()
                 return "Error: Unexpected response format from Hugging Face Inference API."
             elif resp.status_code == 503:
-                # Estimated time is sometimes returned in the 503 JSON body
                 try:
                     est_time = resp.json().get("estimated_time", 20.0)
                     return f"The open-source model ({self.model_id}) is currently booting up on Hugging Face servers. Please wait about {int(est_time)} seconds and try again."
@@ -161,3 +162,4 @@ Please explain:
 
 Assistant:"""
         return self._query_api(prompt, max_tokens=300, temperature=0.3)
+

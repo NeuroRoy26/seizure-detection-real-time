@@ -57,7 +57,7 @@ class TestLLMClient(unittest.TestCase):
     def test_generate_report(self, mock_post):
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = [{"generated_text": "Clinical EEG Report Draft"}]
+        mock_response.json.return_value = {"choices": [{"message": {"content": "Clinical EEG Report Draft"}}]}
         mock_post.return_value = mock_response
 
         llm = LLMClient()
@@ -75,7 +75,7 @@ class TestLLMClient(unittest.TestCase):
     def test_explain_features(self, mock_post):
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = [{"generated_text": "EEG Feature Explanation"}]
+        mock_response.json.return_value = {"choices": [{"message": {"content": "EEG Feature Explanation"}}]}
         mock_post.return_value = mock_response
 
         llm = LLMClient()
