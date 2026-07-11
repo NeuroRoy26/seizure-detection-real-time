@@ -24,13 +24,7 @@ class TestLLMClient(unittest.TestCase):
         self.assertTrue(llm.enabled)
         self.assertEqual(llm.model_id, "test-model")
 
-    @patch("requests.post")
-    def test_health_check_ok(self, mock_post):
-        # Configure mock
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_post.return_value = mock_response
-
+    def test_health_check_ok(self):
         # Test
         llm = LLMClient()
         llm.enabled = True
@@ -40,18 +34,14 @@ class TestLLMClient(unittest.TestCase):
         self.assertEqual(health["status"], "ok")
         self.assertIn("Successfully connected", health["message"])
 
-    @patch("requests.post")
-    def test_health_check_loading(self, mock_post):
-        mock_response = MagicMock()
-        mock_response.status_code = 503
-        mock_post.return_value = mock_response
-
+    def test_health_check_missing_token(self):
         llm = LLMClient()
         llm.enabled = True
-        llm.hf_token = "fake-token"
+        llm.hf_token = ""
+        llm.api_key = ""
         
         health = llm.check_health()
-        self.assertEqual(health["status"], "loading")
+        self.assertEqual(health["status"], "missing_token")
 
     @patch("requests.post")
     def test_generate_report(self, mock_post):

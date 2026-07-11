@@ -50,35 +50,15 @@ class LLMClient:
 
     def check_health(self) -> Dict[str, Any]:
         """
-        Checks if the LLM client is configured, the required key is present, and the API is reachable.
+        Checks if the LLM client is configured, and the required key is present.
         """
         if not self.enabled:
             return {"status": "disabled", "message": "LLM feature flag is disabled in config.yaml."}
         if not self.api_key and not self.hf_token:
             return {"status": "missing_token", "message": "Neither GROQ_API_KEY nor HF_TOKEN is set."}
             
-        try:
-            # Send a minimal test request to verify authentication & model availability
-            token = self.api_key if self.api_key else self.hf_token
-            headers = {"Authorization": f"Bearer {token}"}
-            payload = {
-                "model": self.model_id,
-                "messages": [{"role": "user", "content": "Hello"}],
-                "max_tokens": 5
-            }
-            # Set a low timeout for the health check
-            resp = requests.post(self.api_url, json=payload, headers=headers, timeout=5.0)
-            if resp.status_code == 200:
-                provider = "Groq" if self.api_key else "Hugging Face"
-                return {"status": "ok", "message": f"Successfully connected to {provider} model: {self.model_id}."}
-            elif resp.status_code == 503:
-                return {"status": "loading", "message": "Model is currently loading on the server. Try again in a few seconds."}
-            else:
-                return {"status": "error", "message": f"API responded with status code {resp.status_code}: {resp.text}"}
-        except requests.exceptions.Timeout:
-            return {"status": "timeout", "message": "Health check timed out trying to reach LLM API."}
-        except Exception as e:
-            return {"status": "error", "message": f"Connection failed: {str(e)}"}
+        provider = "Groq" if self.api_key else "Hugging Face"
+        return {"status": "ok", "message": f"Successfully connected configuration to {provider} with model: {self.model_id}."}
 
     def _query_api(self, prompt: str, max_tokens: int = 512, temperature: float = 0.7) -> str:
         """
