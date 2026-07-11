@@ -31,6 +31,7 @@ class LLMClient:
         self.hf_token = os.environ.get("HF_TOKEN", "").strip()
         
         self.load_config()
+        self._explanation_cache: Dict[str, str] = {}
 
     def load_config(self) -> None:
         if os.path.exists(self.config_path):
@@ -82,6 +83,7 @@ class LLMClient:
         max_retries = 3
         backoff = 2.0
         
+        start_time = time.time()
         for attempt in range(max_retries):
             try:
                 resp = requests.post(self.api_url, json=payload, headers=headers, timeout=25.0)
@@ -91,7 +93,15 @@ class LLMClient:
                         message = data["choices"][0].get("message", {})
                         content = message.get("content", "")
                         if content:
-                            return content.strip()
+                            content_str = content.strip()
+                            # Append safety disclaimer guardrail
+                            disclaimer = "\n\n---\n*⚠️ **Disclaimer**: This is an AI-generated clinical report assistant tool. All telemetry insights and notes are suggestions only and MUST be reviewed and signed off by a qualified neurologist before making clinical decisions.*"
+                            if not content_str.endswith(disclaimer):
+                                content_str += disclaimer
+                            
+                            latency = (time.time() - start_time) * 1000
+                            print(f"[LLM LOG] Query Success | Model: {self.model_id} | Latency: {latency:.2f}ms | Length: {len(content_str)} chars")
+                            return content_str
                     return "Error: Unexpected response format from LLM API."
                 elif resp.status_code == 429:
                     # Rate limit hit, wait and retry
@@ -162,7 +172,13 @@ Assistant:"""
     def explain_features(self, channel_idx: int, features: Dict[str, float]) -> str:
         """
         Explains why a specific channel is exhibiting anomalous features in physiological terms.
+        Uses in-memory caching to avoid redundant API queries.
         """
+        cache_key = f"{channel_idx}:{sorted(features.items())}"
+        if cache_key in self._explanation_cache:
+            print(f"[LLM CACHE] Hit for key: {cache_key}")
+            return self._explanation_cache[cache_key]
+
         feats_str = "\n".join([f"- {k}: {v:.4f}" for k, v in features.items()])
         prompt = f"""<system>
 You are a medical AI explainer designed to bridge the gap between machine learning features and clinical neurophysiology.
@@ -179,5 +195,8 @@ Please explain:
 2. Whether this pattern points to normal brain activity, motion artifacts, or potential epileptiform/ictal discharges.
 
 Assistant:"""
-        return self._query_api(prompt, max_tokens=300, temperature=0.3)
+        resp = self._query_api(prompt, max_tokens=300, temperature=0.3)
+        if resp and not resp.startswith("Error") and "failed" not in resp.lower() and "disabled" not in resp.lower() and "missing" not in resp.lower():
+            self._explanation_cache[cache_key] = resp
+        return resp
 

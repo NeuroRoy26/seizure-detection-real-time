@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 import os
 import json
 import time
+import requests
 
 from src.llm_client import LLMClient
 import api
@@ -60,7 +61,8 @@ class TestLLMClient(unittest.TestCase):
             active_state="patient_seizure",
             features_list=[{"channel": "1", "variance": 10.0, "rms": 5.0, "delta": 0.5, "theta": 0.2}]
         )
-        self.assertEqual(report, "Clinical EEG Report Draft")
+        self.assertTrue(report.startswith("Clinical EEG Report Draft"))
+        self.assertTrue("Disclaimer" in report)
 
     @patch("requests.post")
     def test_explain_features(self, mock_post):
@@ -77,7 +79,8 @@ class TestLLMClient(unittest.TestCase):
             channel_idx=0,
             features={"variance": 10.0, "rms": 5.0}
         )
-        self.assertEqual(explanation, "EEG Feature Explanation")
+        self.assertTrue(explanation.startswith("EEG Feature Explanation"))
+        self.assertTrue("Disclaimer" in explanation)
 
     @patch("time.sleep")
     @patch("requests.post")
@@ -97,7 +100,7 @@ class TestLLMClient(unittest.TestCase):
         llm.hf_token = "fake-token"
         
         response = llm._query_api("Hello", max_tokens=10)
-        self.assertEqual(response, "Retry Success Response")
+        self.assertTrue(response.startswith("Retry Success Response"))
         self.assertEqual(mock_post.call_count, 2)
         mock_sleep.assert_called_once_with(2.0)
 
@@ -114,6 +117,114 @@ class TestLLMClient(unittest.TestCase):
         finally:
             os.environ.clear()
             os.environ.update(orig_env)
+
+    @patch("requests.post")
+    def test_explain_features_caching(self, mock_post):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"choices": [{"message": {"content": "Explanation Content"}}]}
+        mock_post.return_value = mock_response
+
+        llm = LLMClient()
+        llm.enabled = True
+        llm.hf_token = "fake-token"
+
+        # 1st call
+        res1 = llm.explain_features(channel_idx=2, features={"variance": 1.0})
+        # 2nd call (should hit cache)
+        res2 = llm.explain_features(channel_idx=2, features={"variance": 1.0})
+
+        self.assertEqual(res1, res2)
+        self.assertEqual(mock_post.call_count, 1)  # Only 1 HTTP call made!
+
+    def test_disabled_client_behavior(self):
+        llm = LLMClient()
+        llm.enabled = False
+        health = llm.check_health()
+        self.assertEqual(health["status"], "disabled")
+        resp = llm._query_api("test prompt")
+        self.assertEqual(resp, "LLM features are currently disabled in configuration.")
+
+    def test_missing_key_behavior(self):
+        llm = LLMClient()
+        llm.enabled = True
+        llm.api_key = ""
+        llm.hf_token = ""
+        resp = llm._query_api("test prompt")
+        self.assertTrue("Missing API key" in resp)
+
+    @patch("builtins.open", side_effect=IOError("corrupted config"))
+    def test_load_config_error(self, mock_open_file):
+        llm = LLMClient()
+        llm.config_path = "some_config.yaml"
+        llm.load_config()  # should handle exception internally
+
+    @patch("builtins.open", side_effect=IOError("permission denied"))
+    @patch("os.path.exists", return_value=True)
+    def test_env_loading_error(self, mock_exists, mock_open_file):
+        llm = LLMClient()  # should handle exception internally
+
+    @patch("time.sleep")
+    @patch("requests.post")
+    def test_booting_delay_handling(self, mock_post, mock_sleep):
+        # 503 error
+        mock_resp_503 = MagicMock()
+        mock_resp_503.status_code = 503
+        mock_resp_503.json.return_value = {"estimated_time": 25.0}
+
+        mock_post.return_value = mock_resp_503
+
+        llm = LLMClient()
+        llm.enabled = True
+        llm.hf_token = "fake-token"
+
+        resp = llm._query_api("test", max_tokens=10)
+        self.assertTrue("booting up" in resp)
+        self.assertTrue("25 seconds" in resp)
+
+        # JSON decode error case
+        mock_resp_503.json.side_effect = ValueError("invalid json")
+        resp = llm._query_api("test", max_tokens=10)
+        self.assertTrue("booting up" in resp)
+
+    @patch("time.sleep")
+    @patch("requests.post")
+    def test_timeout_handling(self, mock_post, mock_sleep):
+        mock_post.side_effect = requests.exceptions.Timeout("timeout")
+
+        llm = LLMClient()
+        llm.enabled = True
+        llm.hf_token = "fake-token"
+
+        resp = llm._query_api("test", max_tokens=10)
+        self.assertTrue("timed out" in resp)
+
+    @patch("time.sleep")
+    @patch("requests.post")
+    def test_general_exception_handling(self, mock_post, mock_sleep):
+        mock_post.side_effect = RuntimeError("other error")
+
+        llm = LLMClient()
+        llm.enabled = True
+        llm.hf_token = "fake-token"
+
+        resp = llm._query_api("test", max_tokens=10)
+        self.assertTrue("other error" in resp)
+
+    @patch("requests.post")
+    def test_http_error_handling(self, mock_post):
+        mock_resp_500 = MagicMock()
+        mock_resp_500.status_code = 500
+        mock_resp_500.text = "Internal Server Error"
+        mock_post.return_value = mock_resp_500
+
+        llm = LLMClient()
+        llm.enabled = True
+        llm.hf_token = "fake-token"
+
+        resp = llm._query_api("test", max_tokens=10)
+        self.assertTrue("LLM API error (500)" in resp)
+        self.assertTrue("Internal Server Error" in resp)
 
 
 class TestFastAPILLMEndpoints(unittest.TestCase):
