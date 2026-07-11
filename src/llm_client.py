@@ -5,14 +5,15 @@ from typing import Optional, Dict, Any, List
 
 class LLMClient:
     """
-    Client for querying open-source LLMs hosted on Hugging Face Serverless Inference API.
+    Client for querying open-source LLMs hosted on Groq or Hugging Face.
     Does not require heavy local installs, is completely free, and queries remotely.
     """
     def __init__(self, config_path: str = "config.yaml"):
         self.config_path = config_path
         self.enabled = False
-        self.model_id = "Qwen/Qwen2.5-7B-Instruct"
-        self.api_url_base = "https://router.huggingface.co/v1"
+        self.model_id = "llama-3.1-8b-instant"
+        self.api_url_base = "https://api.groq.com/openai/v1"
+        self.api_key = os.environ.get("GROQ_API_KEY", "").strip()
         self.hf_token = os.environ.get("HF_TOKEN", "").strip()
         
         self.load_config()
@@ -35,16 +36,17 @@ class LLMClient:
 
     def check_health(self) -> Dict[str, Any]:
         """
-        Checks if the LLM client is configured, the HF_TOKEN is present, and the API is reachable.
+        Checks if the LLM client is configured, the required key is present, and the API is reachable.
         """
         if not self.enabled:
             return {"status": "disabled", "message": "LLM feature flag is disabled in config.yaml."}
-        if not self.hf_token:
-            return {"status": "missing_token", "message": "HF_TOKEN environment variable is not set."}
+        if not self.api_key and not self.hf_token:
+            return {"status": "missing_token", "message": "Neither GROQ_API_KEY nor HF_TOKEN is set."}
             
         try:
             # Send a minimal test request to verify authentication & model availability
-            headers = {"Authorization": f"Bearer {self.hf_token}"}
+            token = self.api_key if self.api_key else self.hf_token
+            headers = {"Authorization": f"Bearer {token}"}
             payload = {
                 "model": self.model_id,
                 "messages": [{"role": "user", "content": "Hello"}],
@@ -53,27 +55,29 @@ class LLMClient:
             # Set a low timeout for the health check
             resp = requests.post(self.api_url, json=payload, headers=headers, timeout=5.0)
             if resp.status_code == 200:
-                return {"status": "ok", "message": f"Successfully connected to Hugging Face model: {self.model_id}."}
+                provider = "Groq" if self.api_key else "Hugging Face"
+                return {"status": "ok", "message": f"Successfully connected to {provider} model: {self.model_id}."}
             elif resp.status_code == 503:
-                # 503 means model is loading on Hugging Face side
-                return {"status": "loading", "message": "Model is currently loading on Hugging Face servers. Try again in a few seconds."}
+                return {"status": "loading", "message": "Model is currently loading on the server. Try again in a few seconds."}
             else:
-                return {"status": "error", "message": f"HF API responded with status code {resp.status_code}: {resp.text}"}
+                return {"status": "error", "message": f"API responded with status code {resp.status_code}: {resp.text}"}
         except requests.exceptions.Timeout:
-            return {"status": "timeout", "message": "Health check timed out trying to reach Hugging Face API."}
+            return {"status": "timeout", "message": "Health check timed out trying to reach LLM API."}
         except Exception as e:
             return {"status": "error", "message": f"Connection failed: {str(e)}"}
 
     def _query_api(self, prompt: str, max_tokens: int = 512, temperature: float = 0.7) -> str:
         """
-        Queries the Hugging Face Serverless Inference API using chat completions format.
+        Queries the LLM API using chat completions format.
         """
         if not self.enabled:
             return "LLM features are currently disabled in configuration."
-        if not self.hf_token:
-            return "Hugging Face Access Token (HF_TOKEN) environment variable is missing. Please set it to enable AI reports."
+        
+        token = self.api_key if self.api_key else self.hf_token
+        if not token:
+            return "Missing API key. Please configure GROQ_API_KEY or HF_TOKEN to enable AI features."
             
-        headers = {"Authorization": f"Bearer {self.hf_token}"}
+        headers = {"Authorization": f"Bearer {token}"}
         payload = {
             "model": self.model_id,
             "messages": [{"role": "user", "content": prompt}],
@@ -90,17 +94,17 @@ class LLMClient:
                     content = message.get("content", "")
                     if content:
                         return content.strip()
-                return "Error: Unexpected response format from Hugging Face Inference API."
+                return "Error: Unexpected response format from LLM API."
             elif resp.status_code == 503:
                 try:
                     est_time = resp.json().get("estimated_time", 20.0)
-                    return f"The open-source model ({self.model_id}) is currently booting up on Hugging Face servers. Please wait about {int(est_time)} seconds and try again."
+                    return f"The model ({self.model_id}) is currently booting up. Please wait about {int(est_time)} seconds and try again."
                 except Exception:
-                    return f"The open-source model ({self.model_id}) is booting up on Hugging Face servers. Please retry in a few moments."
+                    return f"The model ({self.model_id}) is booting up. Please retry in a few moments."
             else:
-                return f"Hugging Face Inference API error ({resp.status_code}): {resp.text}"
+                return f"LLM API error ({resp.status_code}): {resp.text}"
         except requests.exceptions.Timeout:
-            return "The request to the Hugging Face Inference API timed out. Please try again."
+            return "The request to the LLM API timed out. Please try again."
         except Exception as e:
             return f"Failed to generate content: {str(e)}"
 
