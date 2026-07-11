@@ -1,7 +1,10 @@
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from fastapi import FastAPI
 from pydantic import BaseModel
 import numpy as np
-import os
 import time
 import yaml
 from typing import Optional, Tuple
