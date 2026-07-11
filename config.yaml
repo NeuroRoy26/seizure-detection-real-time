@@ -40,5 +40,5 @@ mlflow:
 llm:
   enabled: true
   model_id: "Qwen/Qwen2.5-7B-Instruct"
-  api_url: "https://api-inference.huggingface.co/models"
+  api_url: "https://router.huggingface.co/hf-inference/models"
 
