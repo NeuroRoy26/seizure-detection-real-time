@@ -31,7 +31,7 @@ training:
   test_split: 0.2
   
 mlflow:
-  use_dagshub: false
+  use_dagshub: true
   repo_owner: "NeuroRoy26"
   repo_name: "seizure-detection-real-time"
   experiment_name: "seizure-detection-2d-cnn"
