@@ -1,6 +1,7 @@
 import os
 import requests
 import yaml
+import time
 from typing import Optional, Dict, Any, List
 
 class LLMClient:
@@ -81,7 +82,7 @@ class LLMClient:
 
     def _query_api(self, prompt: str, max_tokens: int = 512, temperature: float = 0.7) -> str:
         """
-        Queries the LLM API using chat completions format.
+        Queries the LLM API using chat completions format with exponential backoff on rate limits.
         """
         if not self.enabled:
             return "LLM features are currently disabled in configuration."
@@ -98,28 +99,48 @@ class LLMClient:
             "temperature": temperature
         }
         
-        try:
-            resp = requests.post(self.api_url, json=payload, headers=headers, timeout=25.0)
-            if resp.status_code == 200:
-                data = resp.json()
-                if "choices" in data and len(data["choices"]) > 0:
-                    message = data["choices"][0].get("message", {})
-                    content = message.get("content", "")
-                    if content:
-                        return content.strip()
-                return "Error: Unexpected response format from LLM API."
-            elif resp.status_code == 503:
-                try:
-                    est_time = resp.json().get("estimated_time", 20.0)
-                    return f"The model ({self.model_id}) is currently booting up. Please wait about {int(est_time)} seconds and try again."
-                except Exception:
-                    return f"The model ({self.model_id}) is booting up. Please retry in a few moments."
-            else:
-                return f"LLM API error ({resp.status_code}): {resp.text}"
-        except requests.exceptions.Timeout:
-            return "The request to the LLM API timed out. Please try again."
-        except Exception as e:
-            return f"Failed to generate content: {str(e)}"
+        max_retries = 3
+        backoff = 2.0
+        
+        for attempt in range(max_retries):
+            try:
+                resp = requests.post(self.api_url, json=payload, headers=headers, timeout=25.0)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if "choices" in data and len(data["choices"]) > 0:
+                        message = data["choices"][0].get("message", {})
+                        content = message.get("content", "")
+                        if content:
+                            return content.strip()
+                    return "Error: Unexpected response format from LLM API."
+                elif resp.status_code == 429:
+                    # Rate limit hit, wait and retry
+                    if attempt < max_retries - 1:
+                        time.sleep(backoff)
+                        backoff *= 1.5
+                        continue
+                    return "Groq free tier rate limit exceeded. Please wait a moment and try again."
+                elif resp.status_code == 503:
+                    # Model loading / temporary unavailable
+                    if attempt < max_retries - 1:
+                        time.sleep(backoff)
+                        backoff *= 1.5
+                        continue
+                    try:
+                        est_time = resp.json().get("estimated_time", 20.0)
+                        return f"The model ({self.model_id}) is currently booting up. Please wait about {int(est_time)} seconds and try again."
+                    except Exception:
+                        return f"The model ({self.model_id}) is booting up. Please retry in a few moments."
+                else:
+                    return f"LLM API error ({resp.status_code}): {resp.text}"
+            except requests.exceptions.Timeout:
+                if attempt == max_retries - 1:
+                    return "The request to the LLM API timed out. Please try again."
+                time.sleep(backoff)
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    return f"Failed to generate content: {str(e)}"
+                time.sleep(backoff)
 
     def generate_report(self, seizure_probability: float, active_state: str, features_list: Optional[List[Dict[str, Any]]] = None) -> str:
         """
