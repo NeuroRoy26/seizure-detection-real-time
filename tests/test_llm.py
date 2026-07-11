@@ -1,8 +1,9 @@
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, mock_open
 from fastapi.testclient import TestClient
 import os
 import json
+import time
 
 from src.llm_client import LLMClient
 import api
@@ -77,6 +78,42 @@ class TestLLMClient(unittest.TestCase):
             features={"variance": 10.0, "rms": 5.0}
         )
         self.assertEqual(explanation, "EEG Feature Explanation")
+
+    @patch("time.sleep")
+    @patch("requests.post")
+    def test_retry_on_rate_limit(self, mock_post, mock_sleep):
+        # 1st attempt: 429 rate limit
+        mock_resp_429 = MagicMock()
+        mock_resp_429.status_code = 429
+        # 2nd attempt: 200 success
+        mock_resp_200 = MagicMock()
+        mock_resp_200.status_code = 200
+        mock_resp_200.json.return_value = {"choices": [{"message": {"content": "Retry Success Response"}}]}
+        
+        mock_post.side_effect = [mock_resp_429, mock_resp_200]
+        
+        llm = LLMClient()
+        llm.enabled = True
+        llm.hf_token = "fake-token"
+        
+        response = llm._query_api("Hello", max_tokens=10)
+        self.assertEqual(response, "Retry Success Response")
+        self.assertEqual(mock_post.call_count, 2)
+        mock_sleep.assert_called_once_with(2.0)
+
+    @patch("builtins.open", new_callable=mock_open, read_data="GROQ_API_KEY=test-env-key-123\n")
+    @patch("os.path.exists", return_value=True)
+    def test_env_loading(self, mock_exists, mock_open_file):
+        orig_env = dict(os.environ)
+        if "GROQ_API_KEY" in os.environ:
+            del os.environ["GROQ_API_KEY"]
+            
+        try:
+            llm = LLMClient()
+            self.assertEqual(llm.api_key, "test-env-key-123")
+        finally:
+            os.environ.clear()
+            os.environ.update(orig_env)
 
 
 class TestFastAPILLMEndpoints(unittest.TestCase):

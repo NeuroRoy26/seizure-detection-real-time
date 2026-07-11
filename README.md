@@ -302,9 +302,46 @@ Every pull request or commit affecting the `terraform/` configurations triggers 
 
 ---
 
+## AI Clinical Assistant and Reporting (Groq LLM)
+
+To aid clinical neurophysiologists in telemetry assessment and SOAP report generation, the system features a remotely routed, OpenAI-compatible LLM execution layer.
+
+### 📐 System Architecture & Data Flow
+The LLM module operates asynchronously to avoid impacting real-time EEG feature extraction:
+
+```mermaid
+sequenceDiagram
+    participant UI as Streamlit Dashboard
+    participant API as FastAPI Backend
+    participant Client as LLMClient (Python)
+    participant Groq as Groq API (llama-3.1-8b-instant)
+
+    UI->>API: POST /llm/report (seizure prob, status, channel features)
+    API->>Client: query_api(prompt)
+    Client->>Client: Load local .env (GROQ_API_KEY)
+    Client->>Groq: POST /chat/completions (OpenAI compatible)
+    Note over Groq: Process Prompt
+    Groq-->>Client: Returns Choices (200 OK)
+    Note over Client: Retry with Exponential Backoff if Rate Limited (429)
+    Client-->>API: Returns Generated Text
+    API-->>UI: Displays Markdown Clinical SOAP Report
+```
+
+### 🛠️ Key Technical Highlights
+1. **Zero-Dependency Local Credentials Isolation**: Stored in a local `.env` file and excluded from version control via `.gitignore`.
+2. **FastAPI Endpoints**:
+   * `GET /llm/health`: Validates local credentials and configuration status instantaneously without triggering billing queries or API rate limits.
+   * `POST /llm/report`: Generates markdown clinical SOAP reports from rolling feature arrays.
+   * `POST /llm/explain`: Explains channel-specific signal processing metrics in clinical neurophysiology terms.
+   * `POST /llm/chat`: Handles conversational queries for the assistant.
+3. **Resilience & Rate Limit Backoff**: Automatically intercepts HTTP `429` (Rate Limit Exceeded) responses and applies exponential backoff and retries, ensuring stable operation under free-tier limits.
+4. **Cloud Deployment (Hugging Face Spaces)**: The backend securely loads `GROQ_API_KEY` from Space Secrets, bypassing DNS resolution limitations and running completely free in the cloud container.
+
+---
+
 ## Testing and Code Quality
 
-The codebase utilizes a comprehensive testing suite with 56 unit and integration tests. The test suite covers data validation checks, preprocessing transformations, generator loading, API routing, and model ONNX compilation.
+The codebase utilizes a comprehensive testing suite with 67 unit and integration tests. The test suite covers data validation checks, preprocessing transformations, generator loading, API routing, and model ONNX compilation.
 
 ```powershell
 # Run the test suite
