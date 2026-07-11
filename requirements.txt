@@ -7,3 +7,4 @@ matplotlib
 onnxruntime
 PyYAML
 h5py
+scipy
