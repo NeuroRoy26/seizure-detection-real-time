@@ -415,3 +415,82 @@ llm:
         self.assertIn("Clinical Report content reflecting study findings.", report)
         self.assertIn("https://pubmed.ncbi.nlm.nih.gov/12345/", report)
         self.assertIn("Disclaimer", report)
+
+    @patch("src.serving.rag_retriever.RAGRetriever._run_pubmed_api")
+    @patch("requests.post")
+    @patch("os.path.exists", return_value=True)
+    def test_generate_report_citation_coverage(self, mock_exists, mock_post, mock_run):
+        # Mock PubMed script execution to return 2 articles
+        mock_run.side_effect = [
+            ["12345", "67890"],
+            [
+                {
+                    "pmid": "12345",
+                    "title": "Study Alpha",
+                    "authors": ["Author A"],
+                    "journal": "J Neuro",
+                    "pubdate": "2022",
+                    "abstract": "Abstract Alpha"
+                },
+                {
+                    "pmid": "67890",
+                    "title": "Study Beta",
+                    "authors": ["Author B"],
+                    "journal": "J Neuro",
+                    "pubdate": "2023",
+                    "abstract": "Abstract Beta"
+                }
+            ]
+        ]
+        
+        # Scenario 1: LLM cites only the first paper by PMID [1] or 12345
+        mock_response_1 = MagicMock()
+        mock_response_1.status_code = 200
+        mock_response_1.json.return_value = {
+            "choices": [{"message": {"content": "Report discussing Study [1] (PMID: 12345). No other citation."}}]
+        }
+        mock_post.return_value = mock_response_1
+
+        llm = LLMClient(self.temp_config_path)
+        llm.enabled = True
+        llm.hf_token = "fake-token"
+
+        report_1 = llm.generate_report(0.9, "seizure")
+        # Since only PMID 12345 / [1] is in report text, 67890 / [2] is uncited
+        # Coverage should be 50%
+        self.assertIn("Citation Grounding**: 50%", report_1)
+        self.assertIn("12345", report_1)
+
+        # Scenario 2: LLM cites both papers (cites [1] and [2])
+        # Reset mock run side effect for the next run
+        mock_run.side_effect = [
+            ["12345", "67890"],
+            [
+                {
+                    "pmid": "12345",
+                    "title": "Study Alpha",
+                    "authors": ["Author A"],
+                    "journal": "J Neuro",
+                    "pubdate": "2022",
+                    "abstract": "Abstract Alpha"
+                },
+                {
+                    "pmid": "67890",
+                    "title": "Study Beta",
+                    "authors": ["Author B"],
+                    "journal": "J Neuro",
+                    "pubdate": "2023",
+                    "abstract": "Abstract Beta"
+                }
+            ]
+        ]
+        mock_response_2 = MagicMock()
+        mock_response_2.status_code = 200
+        mock_response_2.json.return_value = {
+            "choices": [{"message": {"content": "Report discussing study [1] and study [2]."}}]
+        }
+        mock_post.return_value = mock_response_2
+
+        report_2 = llm.generate_report(0.9, "seizure")
+        # Coverage should be 100%
+        self.assertIn("Citation Grounding**: 100%", report_2)

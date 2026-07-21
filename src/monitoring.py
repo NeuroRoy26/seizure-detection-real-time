@@ -1,5 +1,6 @@
 import os
 import json
+import logging
 from datetime import datetime
 import streamlit as st
 
@@ -63,3 +64,56 @@ def track_visit():
     except Exception as e:
         # Fallback to console print to ensure zero user-facing disruption
         print(f"[Monitoring] Error logging visitor details: {e}")
+
+
+# Configure logger for LLM auditing as a backup/alternative path for external logging agents
+audit_logger = logging.getLogger("llm_audit")
+
+def log_llm_transaction(
+    request_data: dict,
+    response_data: dict,
+    latency_ms: float,
+    cited_pmids: list,
+    uncited_pmids: list,
+    citation_coverage: float
+) -> None:
+    """
+    Logs LLM transactions (seizure metadata, prompt parameters, generated output, 
+    citation validation coverage, and latency) to metrics/llm_audit.jsonl and 
+    emits it to Python system logger.
+    """
+    try:
+        # Try to retrieve context info if running in a Streamlit session
+        hf_user = "Guest"
+        try:
+            if hasattr(st, "context") and st.context:
+                headers = st.context.headers
+                hf_user = headers.get("x-hf-user-username") or headers.get("x-forwarded-user") or "Guest"
+        except Exception:
+            pass
+
+        log_entry = {
+            "timestamp": datetime.now().isoformat(),
+            "user": hf_user,
+            "latency_ms": latency_ms,
+            "citation_coverage": citation_coverage,
+            "cited_pmids": cited_pmids,
+            "uncited_pmids": uncited_pmids,
+            "request": request_data,
+            "response": response_data
+        }
+
+        # Log via Python logging framework
+        audit_logger.info(json.dumps(log_entry))
+
+        # Write to local file store
+        log_dir = "metrics"
+        os.makedirs(log_dir, exist_ok=True)
+        log_file = os.path.join(log_dir, "llm_audit.jsonl")
+
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(log_entry) + "\n")
+            
+    except Exception as e:
+        print(f"[Monitoring] Failed to log LLM transaction: {e}")
+

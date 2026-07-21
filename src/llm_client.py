@@ -4,6 +4,8 @@ import yaml
 import time
 from typing import Optional, Dict, Any, List
 from src.serving.rag_retriever import RAGRetriever
+from src.monitoring import log_llm_transaction
+
 
 class LLMClient:
     """
@@ -205,7 +207,25 @@ Please format your response in standard Markdown using these sections:
         
         prompt += "\nAssistant:"
         
+        t_start = time.perf_counter()
         report = self._query_api(prompt, max_tokens=750, temperature=0.3)
+        latency_ms = (time.perf_counter() - t_start) * 1000
+
+        # Calculate citation coverage
+        cited_pmids = []
+        uncited_pmids = []
+        citation_coverage = 1.0
+        if articles:
+            cited_count = 0
+            for idx, art in enumerate(articles, 1):
+                pmid = art.get("pmid")
+                if pmid:
+                    if pmid in report or f"[{idx}]" in report or f"Reference [{idx}]" in report:
+                        cited_count += 1
+                        cited_pmids.append(pmid)
+                    else:
+                        uncited_pmids.append(pmid)
+            citation_coverage = cited_count / len(articles) if articles else 1.0
 
         # Append explicit PubMed URLs to ensure compliance with the literature grounding rules
         if articles:
@@ -216,12 +236,39 @@ Please format your response in standard Markdown using these sections:
                     url = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
                     urls_section += f"- [{art.get('title', 'PubMed Article')}]({url}) (PMID: {pmid})\n"
             
+            # Append citation coverage badge
+            if citation_coverage == 1.0:
+                urls_section += f"\n✅ **Citation Grounding**: 100% ({len(cited_pmids)}/{len(articles)} sources verified)\n"
+            else:
+                urls_section += f"\n⚠️ **Citation Grounding**: {citation_coverage*100:.0f}% ({len(cited_pmids)}/{len(articles)} sources verified, {len(uncited_pmids)} uncited: {', '.join(uncited_pmids)})\n"
+
             # Find the safety disclaimer and insert the URLs before it
             disclaimer = "\n\n---\n*⚠️ **Disclaimer**: This is an AI-generated clinical report assistant tool. All telemetry insights and notes are suggestions only and MUST be reviewed and signed off by a qualified neurologist before making clinical decisions.*"
             if report.endswith(disclaimer):
                 report = report[:-len(disclaimer)] + urls_section + disclaimer
             else:
                 report = report + urls_section + disclaimer
+        
+        # Log the full transaction for security and clinical audits
+        try:
+            req_data = {
+                "seizure_probability": seizure_probability,
+                "active_state": active_state,
+                "features_summary": features_summary
+            }
+            resp_data = {
+                "report": report
+            }
+            log_llm_transaction(
+                request_data=req_data,
+                response_data=resp_data,
+                latency_ms=latency_ms,
+                cited_pmids=cited_pmids,
+                uncited_pmids=uncited_pmids,
+                citation_coverage=citation_coverage
+            )
+        except Exception as e:
+            print(f"[LLM] Error calling log_llm_transaction: {e}")
         
         return report
 
