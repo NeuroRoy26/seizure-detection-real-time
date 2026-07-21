@@ -1,1 +1,1 @@
-# Seizure Detection package
+# Package marker for src

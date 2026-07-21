@@ -13,10 +13,10 @@ import numpy as np
 import pytest
 import h5py
 
-from src.validation import validate_eeg_data
-from src.features import extract_eeg_features
-from src.feature_store import LocalFeatureStore
-from src.model import build_adapted_2d_cnn
+from src.data.validation import validate_eeg_data
+from src.data.features import extract_eeg_features
+from src.data.feature_store import LocalFeatureStore
+from src.models.model import build_adapted_2d_cnn
 
 def test_great_expectations_validation():
     # 1. Valid microvolt window (channels, samples) = (10, 256)

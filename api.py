@@ -2,7 +2,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 import numpy as np
 import time
@@ -10,7 +10,7 @@ import yaml
 from typing import Optional, Tuple
 from collections import deque
 
-from model_fetch import download_if_needed
+from src.serving.model_fetch import download_if_needed
 from src.llm_client import LLMClient
 
 # Load Master Configuration if present
@@ -19,6 +19,19 @@ if os.path.exists("config.yaml"):
     try:
         with open("config.yaml", "r") as f:
             config = yaml.safe_load(f)
+    except Exception:
+        pass
+
+# Layer in run state if present (dynamic parameters like best_indices)
+if os.path.exists(".run_state.json"):
+    try:
+        import json
+        with open(".run_state.json", "r") as f:
+            state = json.load(f)
+            if "best_indices" in state:
+                if "signal_processing" not in config:
+                    config["signal_processing"] = {}
+                config["signal_processing"]["best_indices"] = state["best_indices"]
     except Exception:
         pass
 
@@ -193,6 +206,24 @@ async def ingest(data: EEGData):
         sample = sample[:INCOMING_CHANNELS]
     _sample_buffer.append(sample)
     return {"message": "Data ingested successfully"}
+
+@app.websocket("/ws/ingest")
+async def websocket_ingest(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        while True:
+            payload = await websocket.receive_json()
+            if "data" in payload:
+                global latest_data
+                sample = np.array(payload["data"], dtype=float)
+                latest_data = sample
+                if sample.shape[0] >= INCOMING_CHANNELS:
+                    sample = sample[:INCOMING_CHANNELS]
+                _sample_buffer.append(sample)
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        print(f"[WS Error] {e}")
 
 @app.get("/latest")
 async def get_latest():

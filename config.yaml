@@ -1,10 +1,10 @@
 paths:
-  hdf5_database_path: C:\Roy\Code\seizure-detection\seizure-detection-real-time\train_database.h5
-  hdf5_database_path_2d: C:\Roy\Code\seizure-detection\seizure-detection-real-time\train_database.h5
-  local_data_dir: C:\Roy\Code\seizure-detection\seizure-detection-real-time\datasets
-  s3_manifest_path: C:\Roy\Code\seizure-detection\seizure-detection-real-time\s3_keep_files.txt
-  target_onnx_path: C:\Roy\Code\seizure-detection\seizure-detection-real-time\seizure_detector_mobilenetv2.onnx
-  parquet_dataset_path: C:\Roy\Code\seizure-detection\seizure-detection-real-time\datasets\processed_features.parquet
+  hdf5_database_path: train_database.h5
+  hdf5_database_path_2d: train_database.h5
+  local_data_dir: datasets
+  s3_manifest_path: s3_keep_files.txt
+  target_onnx_path: seizure_detector_eegnet.onnx
+  parquet_dataset_path: datasets/processed_features.parquet
 sampling:
   enabled: true
   negative_ratio: 2.0
@@ -41,4 +41,7 @@ llm:
   enabled: true
   model_id: "llama-3.1-8b-instant"
   api_url: "https://api.groq.com/openai/v1"
+  rag:
+    enabled: true
+    num_articles: 3
 

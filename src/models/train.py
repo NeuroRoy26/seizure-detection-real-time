@@ -21,7 +21,7 @@ from sklearn.utils.class_weight import compute_class_weight
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, mean_squared_error
 
 # Ensure root directory is in python path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 # Import MLflow for model tracking
 try:
@@ -40,7 +40,9 @@ except Exception:
     class Sequence:
         pass
 
-from src.model import build_adapted_2d_cnn
+from src.models.model import build_adapted_2d_cnn
+from src.models.model_eegnet import build_eegnet
+from scripts.local_train_onnx import build_api_compliant_cnn
 
 class HDF5SignalGenerator(Sequence):
     """
@@ -87,8 +89,7 @@ class HDF5SignalGenerator(Sequence):
         if X_batch.shape[2] != self.expected_samples:
             X_batch = X_batch[:, :, :self.expected_samples]
             
-        # Add channel dimension for Conv2D: shape (batch_size, 10, expected_samples, 1)
-        X_batch = np.expand_dims(X_batch, axis=-1)
+        # Returns shape (batch_size, 10, expected_samples)
         return X_batch, y_batch
 
 class MLflowCallback(tf.keras.callbacks.Callback):
@@ -133,7 +134,19 @@ def print_clinical_metrics(dataset_name: str, metrics: dict) -> None:
 
 def _load_config(config_path: str = "config.yaml"):
     with open(config_path, "r") as f:
-        return yaml.safe_load(f)
+        config = yaml.safe_load(f)
+    if os.path.exists(".run_state.json"):
+        try:
+            import json
+            with open(".run_state.json", "r") as f:
+                state = json.load(f)
+                if "best_indices" in state:
+                    if "signal_processing" not in config:
+                        config["signal_processing"] = {}
+                    config["signal_processing"]["best_indices"] = state["best_indices"]
+        except Exception:
+            pass
+    return config
 
 def train_model(config: dict):
     h5_path = config["paths"]["hdf5_database_path_2d"]
@@ -222,14 +235,13 @@ def train_model(config: dict):
 
 
     print("\n" + "=" * 60)
-    print("3. MODEL COMPILATION")
+    print("3. MODEL TRAINING & COMPARISON")
     print("=" * 60)
-    
+
     run_ctx = mlflow.start_run() if mlflow is not None else None
     try:
         if mlflow is not None:
             print(f"[*] MLflow run initiated. Run ID: {run_ctx.info.run_id}")
-            # Log config/signal processing params
             mlflow.log_params({
                 "window_sec": config["signal_processing"]["window_sec"],
                 "target_hz": config["signal_processing"]["target_hz"],
@@ -239,105 +251,156 @@ def train_model(config: dict):
                 "batch_size": batch_size,
                 "epochs": epochs
             })
-            
-        model = build_adapted_2d_cnn(input_shape=(input_channels, input_samples, 1))
-        model.compile(
-            optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
-            loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
-            metrics=["accuracy"]
-        )
-        model.summary()
-        
-        print(f"\n[*] Training for {epochs} epochs...")
-        model.fit(
-            train_gen,
-            validation_data=val_gen,
-            epochs=epochs,
-            class_weight=class_weights,
-            verbose=1,
-            callbacks=[MLflowCallback()] if mlflow is not None else []
-        )
-        
-        print("\n" + "=" * 60)
-        print("4. MODEL CLINICAL EVALUATION")
-        print("=" * 60)
-        
-        # Copy indices before predict to avoid misalignment from on_epoch_end shuffle
+
+        # Define the models we want to train and compare
+        model_factories = {
+            "EEGNet": lambda: build_eegnet(input_shape=(input_channels, input_samples)),
+            "MobileNetV2": lambda: build_api_compliant_cnn(input_shape=(input_channels, input_samples))
+        }
+
+        comparison_results = {}
+
+        # Cache true labels once
         train_indices_before = train_gen.indices.copy()
-        raw_train_preds = model.predict(train_gen, verbose=0)
-        y_train_pred = np.argmax(raw_train_preds, axis=1)
-        
-        val_indices_before = val_gen.indices.copy()
-        raw_val_preds = model.predict(val_gen, verbose=0)
-        y_val_pred = np.argmax(raw_val_preds, axis=1)
-        
-        # Align true labels from generators using copied indices
         y_train_true = []
         for i in range(len(train_gen)):
             batch_indices = train_indices_before[i * train_gen.batch_size : (i + 1) * train_gen.batch_size]
             y_train_true.extend(y_full[np.sort(batch_indices)])
         y_train_true = np.array(y_train_true)
-        
+
+        val_indices_before = val_gen.indices.copy()
         y_val_true = []
         for i in range(len(val_gen)):
             batch_indices = val_indices_before[i * val_gen.batch_size : (i + 1) * val_gen.batch_size]
             y_val_true.extend(y_full[np.sort(batch_indices)])
         y_val_true = np.array(y_val_true)
-        
-        train_metrics = compute_clinical_metrics(y_train_true, y_train_pred)
-        val_metrics = compute_clinical_metrics(y_val_true, y_val_pred)
-        
-        print_clinical_metrics("TRAINING DATASET", train_metrics)
-        print_clinical_metrics("VALIDATION DATASET", val_metrics)
-        
-        if mlflow is not None:
-            # Log final clinical evaluation metrics
-            mlflow.log_metrics({
-                "train_accuracy": train_metrics["accuracy"],
-                "train_precision": train_metrics["precision"],
-                "train_recall": train_metrics["recall"],
-                "train_f1": train_metrics["f1"],
-                "train_rmse": train_metrics["rmse"],
+
+        for name, factory in model_factories.items():
+            print(f"\n{'-'*30}\n[*] Compiling and Training: {name}\n{'-'*30}")
+            model = factory()
+            model.compile(
+                optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
+                loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+                metrics=["accuracy"]
+            )
+            model.summary()
+
+            # Train
+            model.fit(
+                train_gen,
+                validation_data=val_gen,
+                epochs=epochs,
+                class_weight=class_weights,
+                verbose=1
+            )
+
+            # Evaluate
+            raw_train_preds = model.predict(train_gen, verbose=0)
+            y_train_pred = np.argmax(raw_train_preds, axis=1)
+
+            raw_val_preds = model.predict(val_gen, verbose=0)
+            y_val_pred = np.argmax(raw_val_preds, axis=1)
+
+            train_metrics = compute_clinical_metrics(y_train_true, y_train_pred)
+            val_metrics = compute_clinical_metrics(y_val_true, y_val_pred)
+
+            print_clinical_metrics(f"{name} TRAINING DATASET", train_metrics)
+            print_clinical_metrics(f"{name} VALIDATION DATASET", val_metrics)
+
+            # Measure latency
+            import time
+            dummy_input = np.random.randn(1, input_channels, input_samples).astype(np.float32)
+            # Warmup
+            for _ in range(10):
+                _ = model(dummy_input, training=False)
+            t0 = time.time()
+            n_iters = 100
+            for _ in range(n_iters):
+                _ = model(dummy_input, training=False)
+            latency_ms = (time.time() - t0) * 1000.0 / n_iters
+
+            # Export to ONNX temporarily to get file size
+            saved_model_dir = Path(tempfile.mkdtemp(prefix=f"saved_model_{name}_"))
+            model.export(str(saved_model_dir))
+            
+            temp_onnx = str(Path(tempfile.mkdtemp()) / "model.onnx")
+            onnx_cmd = [
+                sys.executable, "-m", "tf2onnx.convert",
+                "--saved-model", str(saved_model_dir),
+                "--output", temp_onnx
+            ]
+            
+            onnx_size_mb = 0.0
+            try:
+                subprocess.run(onnx_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                if os.path.exists(temp_onnx):
+                    onnx_size_mb = os.path.getsize(temp_onnx) / (1024 * 1024)
+            except Exception as e:
+                print(f"[!] Temporary ONNX conversion failed for size check: {e}")
+
+            param_count = model.count_params()
+
+            comparison_results[name] = {
                 "val_accuracy": val_metrics["accuracy"],
                 "val_precision": val_metrics["precision"],
                 "val_recall": val_metrics["recall"],
                 "val_f1": val_metrics["f1"],
                 "val_rmse": val_metrics["rmse"],
-            })
-            
+                "params": param_count,
+                "latency_ms": latency_ms,
+                "onnx_size_mb": onnx_size_mb
+            }
+
+            # Log model-specific metrics to MLflow
+            if mlflow is not None:
+                mlflow.log_metrics({
+                    f"{name}_val_accuracy": val_metrics["accuracy"],
+                    f"{name}_val_precision": val_metrics["precision"],
+                    f"{name}_val_recall": val_metrics["recall"],
+                    f"{name}_val_f1": val_metrics["f1"],
+                    f"{name}_params": float(param_count),
+                    f"{name}_latency_ms": latency_ms,
+                    f"{name}_onnx_size_mb": onnx_size_mb
+                })
+
+            # Save the primary model (EEGNet) as the final production model
+            if name == "EEGNet" and os.path.exists(temp_onnx):
+                import shutil
+                shutil.copy(temp_onnx, target_onnx_path)
+                print(f"[SUCCESS] Locked EEGNet as primary production model: {target_onnx_path}")
+                if mlflow is not None:
+                    mlflow.log_artifact(target_onnx_path, artifact_path="model")
+
+        # ── Print & Log Model Comparison Report ──
         print("\n" + "=" * 60)
-        print("5. EXPORTING TO PRODUCTION ONNX FORMAT")
+        print("MODEL ARCHITECTURE COMPARISON REPORT")
         print("=" * 60)
-        
-        # Save as Keras SavedModel natively
-        saved_model_dir = Path(tempfile.mkdtemp(prefix="saved_model_"))
-        saved_model_dir.mkdir(parents=True, exist_ok=True)
-        model.export(str(saved_model_dir))
-        print(f"[*] Base graph exported to temporary path: {saved_model_dir}")
-        
-        # Convert SavedModel to ONNX
-        onnx_cmd = [
-            sys.executable,
-            "-m",
-            "tf2onnx.convert",
-            "--saved-model",
-            str(saved_model_dir),
-            "--output",
-            target_onnx_path
+        report_lines = [
+            "| Model Architecture | Params (Count) | ONNX Size (MB) | CPU Latency (ms) | Val Accuracy | Val Recall (Sens) | Val Precision | Val F1-Score |",
+            "| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |"
         ]
+        for name, res in comparison_results.items():
+            line = f"| **{name}** | {res['params']:,} | {res['onnx_size_mb']:.2f} MB | {res['latency_ms']:.2f} ms | {res['val_accuracy']*100:.2f}% | {res['val_recall']*100:.2f}% | {res['val_precision']*100:.2f}% | {res['val_f1']:.4f} |"
+            report_lines.append(line)
+
+        report_md = "\n".join(report_lines)
+        print(report_md)
+        print("=" * 60)
+
+        # Log comparison report to MLflow as an artifact
+        with tempfile.NamedTemporaryFile(mode="w", suffix="_comparison.md", delete=False) as f:
+            f.write("# Seizure Detection Model Comparison\n\n")
+            f.write(report_md)
+            f.write("\n")
+            report_path = f.name
         
-        try:
-            print("[*] Compiling Keras Graph to ONNX representation...")
-            subprocess.run(onnx_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            print(f"[SUCCESS] Exported production ONNX model to: {target_onnx_path}")
-            
-            if mlflow is not None and os.path.exists(target_onnx_path):
-                mlflow.log_artifact(target_onnx_path, artifact_path="model")
-                print("[*] ONNX model logged to MLflow artifacts repository.")
-        except subprocess.CalledProcessError as e:
-            print("[X] ONNX cross-compilation failed.")
-            print(e.stderr.decode("utf-8"))
-            
+        if mlflow is not None:
+            mlflow.log_artifact(report_path, artifact_path="reports")
+            try:
+                os.remove(report_path)
+            except Exception:
+                pass
+
     finally:
         if mlflow is not None and run_ctx is not None:
             mlflow.end_run()

@@ -8,7 +8,10 @@ using generator logic to flawlessly avoid memory overflows, and exports
 =============================================================================
 """
 
+import sys
 import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import h5py
 import numpy as np
 from sklearn.model_selection import train_test_split
@@ -56,7 +59,19 @@ INPUT_SAMPLES = None
 
 def _load_config(config_path: str = "config.yaml"):
     with open(config_path, "r") as f:
-        return yaml.safe_load(f)
+        config = yaml.safe_load(f)
+    if os.path.exists(".run_state.json"):
+        try:
+            import json
+            with open(".run_state.json", "r") as f:
+                state = json.load(f)
+                if "best_indices" in state:
+                    if "signal_processing" not in config:
+                        config["signal_processing"] = {}
+                    config["signal_processing"]["best_indices"] = state["best_indices"]
+        except Exception:
+            pass
+    return config
 
 class HDF5Generator(Sequence):
     def __init__(self, h5_path, indices, batch_size=64):
@@ -72,8 +87,10 @@ class HDF5Generator(Sequence):
         sorted_idx = np.sort(batch_indices)
         
         with h5py.File(self.h5_path, 'r') as h5f:
-            X_batch = h5f['X'][sorted_idx]
-            y_batch = h5f['y'][sorted_idx]
+            x_key = "raw_signals/X" if "raw_signals/X" in h5f else "X"
+            y_key = "raw_signals/y" if "raw_signals/y" in h5f else "y"
+            X_batch = h5f[x_key][sorted_idx]
+            y_batch = h5f[y_key][sorted_idx]
             
         return X_batch, y_batch
 
@@ -186,7 +203,8 @@ def main():
 
     with h5py.File(HDF5_DATABASE_PATH, "r") as h5f:
         print("[*] Extracting ONLY lightweight integer labels natively to preserve RAM...")
-        y_full = np.array(h5f["y"], dtype=np.int32)
+        y_key = "raw_signals/y" if "raw_signals/y" in h5f else "y"
+        y_full = np.array(h5f[y_key], dtype=np.int32)
         indices_full = np.arange(len(y_full))
 
     print(f"  -> Total Seizure Labels Extracted : {len(y_full)}")

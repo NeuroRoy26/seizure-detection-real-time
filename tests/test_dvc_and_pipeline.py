@@ -156,12 +156,11 @@ def test_mock_data_pipeline(tmp_path, monkeypatch):
     mock_y = np.array([0, 0, 0, 0, 1, 1, 1, 1], dtype=np.int32)
     monkeypatch.setattr(build_local_database, "preprocess_and_window", lambda *args, **kwargs: (mock_X, mock_y))
 
-    # Mock the channel stability function in channel_selection
-    import channel_selection
     mock_stability = {
         "best_indices": list(range(10)),
         "best_names": [f"EEG{i}" for i in range(10)]
     }
+    import src.data.channel_selection as channel_selection
     monkeypatch.setattr(channel_selection, "calculate_channel_stability", lambda *args, **kwargs: mock_stability)
 
     # 3. Run build_local_database main() to process ETL
@@ -170,10 +169,12 @@ def test_mock_data_pipeline(tmp_path, monkeypatch):
     # Verify HDF5 database was created and has the correct shape
     assert os.path.isfile(hdf5_db_path), "HDF5 database file was not created by ETL."
     with h5py.File(hdf5_db_path, "r") as h5f:
-        assert "X" in h5f, "Dataset X not found in HDF5 file."
-        assert "y" in h5f, "Dataset y not found in HDF5 file."
-        assert h5f["X"].shape == (8, 10, 256)
-        assert len(h5f["y"]) == 8
+        x_key = "raw_signals/X" if "raw_signals/X" in h5f else "X"
+        y_key = "raw_signals/y" if "raw_signals/y" in h5f else "y"
+        assert x_key in h5f, "Dataset X not found in HDF5 file."
+        assert y_key in h5f, "Dataset y not found in HDF5 file."
+        assert h5f[x_key].shape == (8, 10, 256)
+        assert len(h5f[y_key]) == 8
 
     # Define a clean Keras-compliant layer subclass to act as our Mock MobileNetV2 base model.
     # This prevents the need to download large pre-trained weights in unit tests.

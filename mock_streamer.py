@@ -111,8 +111,10 @@ def main() -> None:
         try:
             import h5py
             with h5py.File(h5_db_path, "r") as h5f:
-                X_all = h5f["X"]
-                y_all = h5f["y"][:]
+                x_key = "raw_signals/X" if "raw_signals/X" in h5f else "X"
+                y_key = "raw_signals/y" if "raw_signals/y" in h5f else "y"
+                X_all = h5f[x_key]
+                y_all = h5f[y_key][:]
                 
                 normal_idx = np.where(y_all == 0)[0]
                 seizure_idx = np.where(y_all == 1)[0]
@@ -137,7 +139,17 @@ def main() -> None:
     patient_sample_idx = 0
     patient_step = 0
 
-    print(f"[streamer] Starting mock EEG stream to {args.url} at {args.hz}Hz...")
+    ws_url = args.url.replace("http://", "ws://").replace("https://", "wss://").replace("/ingest", "/ws/ingest")
+    ws = None
+    try:
+        from websockets.sync.client import connect as ws_connect
+        print(f"[streamer] Connecting to WebSocket at {ws_url}...")
+        ws = ws_connect(ws_url)
+        print("[streamer] Connected successfully!")
+    except Exception as e:
+        print(f"[streamer] WebSocket connection failed: {e}. Falling back to REST POST requests.")
+
+    print(f"[streamer] Starting mock EEG stream at {args.hz}Hz...")
     print(f"[streamer] Checking simulator state from {state_url} every 64 samples...")
 
     while True:
@@ -169,7 +181,7 @@ def main() -> None:
             scale_mult = 1e6 if np.max(np.abs(sample_data)) < 0.1 else 1.0
             
             for i in range(10):
-                if idx := BEST_CHANNELS[i] < args.channels:
+                if BEST_CHANNELS[i] < args.channels:
                     sample[BEST_CHANNELS[i]] = float(sample_data[i, patient_step] * scale_mult)
             
             # Advance time-step pointer
@@ -186,7 +198,26 @@ def main() -> None:
                 seizure_active=seizure_active,
             )
 
-        status = post_with_retry(args.url, sample, timeout_s=args.timeout)
+        status = None
+        if ws is not None:
+            try:
+                import json
+                ws.send(json.dumps({"data": sample}))
+                status = 101  # WebSocket status indicator
+            except Exception as e:
+                print(f"[streamer] WS send failed: {e}. Reconnecting...")
+                ws = None
+                status = None
+                status = post_with_retry(args.url, sample, timeout_s=args.timeout)
+        else:
+            status = post_with_retry(args.url, sample, timeout_s=args.timeout)
+            if seq % 128 == 0:
+                try:
+                    from websockets.sync.client import connect as ws_connect
+                    ws = ws_connect(ws_url)
+                    print("[streamer] Reconnected to WebSocket successfully.")
+                except Exception:
+                    pass
 
         if now >= next_print:
             print(f"[streamer] seq={seq:<6} status={status} state={sim_state:<15}")

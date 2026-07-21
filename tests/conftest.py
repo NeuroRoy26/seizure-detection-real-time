@@ -9,6 +9,12 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+# Add subfolders to sys.path so tests can import them directly if they expect legacy names
+sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "src" / "data"))
+sys.path.insert(0, str(ROOT / "src" / "models"))
+sys.path.insert(0, str(ROOT / "src" / "serving"))
+
 TEST_SFREQ_HZ_STR = "128"
 TEST_WINDOW_SECONDS_STR = "2"
 TEST_INCOMING_CHANNELS_STR = "23"

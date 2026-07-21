@@ -9,7 +9,10 @@ to ONNX format in the SageMaker model folder.
 =============================================================================
 """
 
+import sys
 import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import argparse
 import h5py
 import numpy as np
@@ -34,8 +37,10 @@ class HDF5Generator(Sequence):
         sorted_idx = np.sort(batch_indices)
         
         with h5py.File(self.h5_path, 'r') as h5f:
-            X_batch = h5f['X'][sorted_idx]
-            y_batch = h5f['y'][sorted_idx]
+            x_key = "raw_signals/X" if "raw_signals/X" in h5f else "X"
+            y_key = "raw_signals/y" if "raw_signals/y" in h5f else "y"
+            X_batch = h5f[x_key][sorted_idx]
+            y_batch = h5f[y_key][sorted_idx]
             
         return X_batch, y_batch
 
@@ -137,29 +142,33 @@ def main():
             raise FileNotFoundError(f"Could not locate training database .h5 file in {args.train}")
 
     print("\n" + "=" * 60)
-    print("3. LOAD DATASET INTO MEMORY & STRATIFICATION")
+    print("3. CLINICAL STRATIFICATION & LOSS BALANCING")
     print("=" * 60)
     with h5py.File(h5_path, "r") as h5f:
-        print("Loading signals and labels into memory...")
-        X_full = np.array(h5f["X"], dtype=np.float32)
-        y_full = np.array(h5f["y"], dtype=np.int32)
+        y_key = "raw_signals/y" if "raw_signals/y" in h5f else "y"
+        print(f"[*] Extracting labels from {y_key}...")
+        y_full = np.array(h5f[y_key], dtype=np.int32)
+        idx_full = np.arange(len(y_full))
 
-    print(f"Loaded dataset: X shape {X_full.shape} | y shape {y_full.shape}")
+    print(f"  -> Total Seizure Labels: {len(y_full)}")
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X_full,
+    idx_train, idx_test, y_train, _ = train_test_split(
+        idx_full,
         y_full,
         test_size=args.test_split,
         random_state=42,
         stratify=y_full,
     )
 
-    print(f"Train samples: {len(X_train)} | Test samples: {len(X_test)}")
+    print(f"Train samples: {len(idx_train)} | Test samples: {len(idx_test)}")
 
     classes = np.unique(y_train)
     weights_array = compute_class_weight("balanced", classes=classes, y=y_train)
     class_weights = {classes[i]: float(weights_array[i]) for i in range(len(classes))}
     print(f"Native Class Imbalance Scaler: {class_weights}")
+
+    train_gen = HDF5Generator(h5_path, idx_train, batch_size=args.batch_size)
+    test_gen = HDF5Generator(h5_path, idx_test, batch_size=args.batch_size)
 
     print("\n" + "=" * 60)
     print("4. MODEL COMPILATION")
@@ -177,11 +186,9 @@ def main():
     print("5. MODEL TRAINING")
     print("=" * 60)
     model.fit(
-        X_train,
-        y_train,
-        validation_data=(X_test, y_test),
+        train_gen,
+        validation_data=test_gen,
         epochs=args.epochs,
-        batch_size=args.batch_size,
         class_weight=class_weights,
         verbose=1,
     )
@@ -189,14 +196,27 @@ def main():
     print("\n" + "=" * 60)
     print("6. MODEL EVALUATION")
     print("=" * 60)
-    raw_train_preds = model.predict(X_train, batch_size=args.batch_size)
+    raw_train_preds = model.predict(train_gen, batch_size=args.batch_size)
     y_train_pred = np.argmax(raw_train_preds, axis=1)
 
-    raw_test_preds = model.predict(X_test, batch_size=args.batch_size)
+    raw_test_preds = model.predict(test_gen, batch_size=args.batch_size)
     y_test_pred = np.argmax(raw_test_preds, axis=1)
 
-    print_metrics("TRAINING DATASET", y_train, y_train_pred)
-    print_metrics("TESTING DATASET", y_test, y_test_pred)
+    # Reconstruct true labels from generators
+    y_train_true = []
+    for i in range(len(train_gen)):
+        batch_indices = idx_train[i * args.batch_size : (i + 1) * args.batch_size]
+        y_train_true.extend(y_full[np.sort(batch_indices)])
+    y_train_true = np.array(y_train_true)
+
+    y_test_true = []
+    for i in range(len(test_gen)):
+        batch_indices = idx_test[i * args.batch_size : (i + 1) * args.batch_size]
+        y_test_true.extend(y_full[np.sort(batch_indices)])
+    y_test_true = np.array(y_test_true)
+
+    print_metrics("TRAINING DATASET", y_train_true, y_train_pred)
+    print_metrics("TESTING DATASET", y_test_true, y_test_pred)
 
     print("\n" + "=" * 60)
     print("7. ONNX EXPORT")

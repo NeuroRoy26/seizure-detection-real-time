@@ -16,6 +16,14 @@ st.set_page_config(
 )
 
 # Custom CSS for the recruiter-facing medical dashboard
+# Track visitor session on first load
+if "visited" not in st.session_state:
+    st.session_state.visited = True
+    try:
+        from src.monitoring import track_visit
+        track_visit()
+    except Exception:
+        pass
 st.markdown(
     """
     <style>
@@ -75,6 +83,19 @@ if os.path.exists("config.yaml"):
     try:
         with open("config.yaml", "r") as f:
             config = yaml.safe_load(f)
+    except Exception:
+        pass
+
+# Layer in run state if present (dynamic parameters like best_indices)
+if os.path.exists(".run_state.json"):
+    try:
+        import json
+        with open(".run_state.json", "r") as f:
+            state = json.load(f)
+            if "best_indices" in state:
+                if "signal_processing" not in config:
+                    config["signal_processing"] = {}
+                config["signal_processing"]["best_indices"] = state["best_indices"]
     except Exception:
         pass
 
@@ -295,9 +316,9 @@ with st.sidebar:
 
 # Restructure main interface into Tabs
 if llm_enabled:
-    tab_stream, tab_explorer, tab_llm = st.tabs(["Real-Time Stream", "Clinical Dataset Explorer", "AI Assistant & Reporting"])
+    tab_stream, tab_explorer, tab_llm, tab_monitor = st.tabs(["Real-Time Stream", "Clinical Dataset Explorer", "AI Assistant & Reporting", "📊 Deployment Monitoring"])
 else:
-    tab_stream, tab_explorer = st.tabs(["Real-Time Stream", "Clinical Dataset Explorer"])
+    tab_stream, tab_explorer, tab_monitor = st.tabs(["Real-Time Stream", "Clinical Dataset Explorer", "📊 Deployment Monitoring"])
 
 with tab_stream:
     # Execution Controls
@@ -647,7 +668,7 @@ if llm_enabled:
                     if st.button("Draft Clinical SOAP Report", use_container_width=True, key="btn_draft_report"):
                         # Extract latest features
                         try:
-                            from src.features import extract_eeg_features
+                            from src.data.features import extract_eeg_features
                             buffer_np = np.array(st.session_state.buffer)
                             
                             # Standardize shape to (channels, samples)
@@ -738,7 +759,7 @@ if llm_enabled:
                     if st.button("Interpret Channel Features", use_container_width=True, key="btn_explain_channel"):
                         # Extract latest features for this specific channel
                         try:
-                            from src.features import extract_features_for_channel
+                            from src.data.features import extract_features_for_channel
                             buffer_np = np.array(st.session_state.buffer)
                             if len(buffer_np) >= 256:
                                 window_raw = buffer_np[-256:, :].T # (time, channels) -> (channels, time)
@@ -806,6 +827,91 @@ if llm_enabled:
                 st.session_state.chat_history.append({"role": "assistant", "content": response_text})
                 with st.chat_message("assistant"):
                     st.markdown(response_text)
+
+with tab_monitor:
+    st.header("📊 Deployment & Monitoring Metrics")
+    st.markdown("Monitor user engagement, unique session visits, and telemetry access patterns for this Hugging Face Space deployment.")
+    
+    # Load unique visitors data
+    metrics_file = "metrics/unique_visitors.json"
+    if not os.path.exists(metrics_file):
+        st.info("No visitor metrics recorded yet. Interact with the app to log metrics.")
+    else:
+        try:
+            with open(metrics_file, "r") as f:
+                data = json.load(f)
+                
+            visitors = data.get("visitors", {})
+            total_views = data.get("total_views", 0)
+            unique_count = len(visitors)
+            
+            # Metrics Row
+            col_m1, col_m2, col_m3 = st.columns(3)
+            with col_m1:
+                st.metric("Total Views / Page Hits", total_views)
+            with col_m2:
+                st.metric("Unique Visitors (IP + User)", unique_count)
+            with col_m3:
+                st.metric("Logged-In Users Count", sum(1 for v in visitors.values() if v.get("hf_user") != "Guest"))
+                
+            # Timezones and Locales breakdowns
+            st.markdown("### Visitor Demographics")
+            col_d1, col_d2 = st.columns(2)
+            
+            with col_d1:
+                st.subheader("Timezone Distribution")
+                tz_counts = {}
+                for v in visitors.values():
+                    tz = v.get("timezone", "Unknown")
+                    tz_counts[tz] = tz_counts.get(tz, 0) + 1
+                import pandas as pd
+                if tz_counts:
+                    df_tz = pd.DataFrame(list(tz_counts.items()), columns=["Timezone", "Visitors"])
+                    st.dataframe(df_tz, use_container_width=True, hide_index=True)
+                else:
+                    st.write("No timezone data.")
+                    
+            with col_d2:
+                st.subheader("Locale Distribution")
+                loc_counts = {}
+                for v in visitors.values():
+                    loc = v.get("locale", "Unknown")
+                    loc_counts[loc] = loc_counts.get(loc, 0) + 1
+                if loc_counts:
+                    df_loc = pd.DataFrame(list(loc_counts.items()), columns=["Locale/Language", "Visitors"])
+                    st.dataframe(df_loc, use_container_width=True, hide_index=True)
+                else:
+                    st.write("No locale data.")
+                    
+            # Recent Visits Log
+            st.markdown("### Recent Visitor Activity Log")
+            visit_logs = []
+            for vid, v in visitors.items():
+                visit_logs.append({
+                    "Timestamp": v.get("last_visit", "N/A")[:19].replace("T", " "),
+                    "IP Address": v.get("ip", "N/A"),
+                    "HF Username": v.get("hf_user", "Guest"),
+                    "Locale": v.get("locale", "N/A"),
+                    "Timezone": v.get("timezone", "N/A"),
+                    "Hits": v.get("visit_count", 1)
+                })
+            # Sort by timestamp desc
+            if visit_logs:
+                visit_logs.sort(key=lambda x: x["Timestamp"], reverse=True)
+                df_log = pd.DataFrame(visit_logs)
+                st.dataframe(df_log, use_container_width=True, hide_index=True)
+            else:
+                st.write("No visitor logs.")
+            
+            # Reset button
+            if st.button("Reset Monitoring Data", type="secondary"):
+                if os.path.exists(metrics_file):
+                    os.remove(metrics_file)
+                    st.success("Monitoring data reset. Refresh the page.")
+                    st.rerun()
+                    
+        except Exception as e:
+            st.error(f"Error loading monitoring metrics: {e}")
 
 # Streamlit-native loop: sleep and rerun if stream is running
 if st.session_state.running:

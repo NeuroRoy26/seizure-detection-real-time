@@ -10,7 +10,10 @@ directly into a local `train_database.h5` file using your NVMe SSD.
 =============================================================================
 """
 
+import sys
 import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import glob
 import codecs
 import re
@@ -240,7 +243,7 @@ def main():
 
     # Import here so unit tests can import this module without pulling
     # in the full dependency tree.
-    from channel_selection import calculate_channel_stability
+    from src.data.channel_selection import calculate_channel_stability
 
     discovery_files = all_edfs[:3]
     sessions_data = []
@@ -273,15 +276,23 @@ def main():
     BEST_INDICES = discovery_results["best_indices"]
     BEST_CHANNEL_NAMES = discovery_results["best_names"]
 
-    # Write computed best_indices back to config.yaml if not in a testing environment
+    # Write computed best_indices back to .run_state.json if not in a testing environment
     import sys
     if "pytest" not in sys.modules:
-        config["signal_processing"]["best_indices"] = BEST_INDICES
-        with open("config.yaml", "w") as f:
-            yaml.safe_dump(config, f)
-        print(f"[*] Saved best_indices {BEST_INDICES} and channel names {BEST_CHANNEL_NAMES} to config.yaml")
+        import json
+        state = {}
+        if os.path.exists(".run_state.json"):
+            try:
+                with open(".run_state.json", "r") as f:
+                    state = json.load(f)
+            except Exception:
+                pass
+        state["best_indices"] = BEST_INDICES
+        with open(".run_state.json", "w") as f:
+            json.dump(state, f, indent=2)
+        print(f"[*] Saved best_indices {BEST_INDICES} and channel names {BEST_CHANNEL_NAMES} to .run_state.json")
     else:
-        print(f"[*] Testing detected; skipped writing best_indices back to config.yaml")
+        print(f"[*] Testing detected; skipped writing best_indices back to .run_state.json")
 
     print("\n" + "=" * 60)
     print("2. BUILDING LOCAL HDF5 COMPRESSION DATABASE")
@@ -299,15 +310,16 @@ def main():
         manifest_f.write("This file lists all EDF files containing seizures that should\n")
         manifest_f.write("be uploaded to S3, along with details of the seizure vs. normal windows.\n\n")
 
+        g_raw = h5f.create_group("raw_signals")
         max_dims = (None, len(BEST_INDICES), win_samples)
-        ds_x = h5f.create_dataset(
+        ds_x = g_raw.create_dataset(
             "X",
             shape=(0, len(BEST_INDICES), win_samples),
             maxshape=max_dims,
             dtype="float32",
             chunks=True,
         )
-        ds_y = h5f.create_dataset(
+        ds_y = g_raw.create_dataset(
             "y",
             shape=(0,),
             maxshape=(None,),

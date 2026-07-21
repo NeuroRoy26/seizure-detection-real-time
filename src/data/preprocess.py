@@ -35,10 +35,10 @@ try:
 except Exception:
     h5py = None
 
-from channel_selection import calculate_channel_stability
-from src.validation import validate_eeg_data
-from src.features import extract_eeg_features
-from src.feature_store import LocalFeatureStore
+from src.data.channel_selection import calculate_channel_stability
+from src.data.validation import validate_eeg_data
+from src.data.features import extract_eeg_features
+from src.data.feature_store import LocalFeatureStore
 
 warnings.filterwarnings("ignore")
 if mne is not None:
@@ -120,9 +120,15 @@ def preprocess_and_validate_windows(
     # CRITICAL: Scale Volts -> Microvolts (1e6) to resolve scale mismatches
     data = data * 1e6
     
-    # Run Great Expectations validation once per recording to avoid runtime bottleneck
-    if not validate_eeg_data(data, amp_min, amp_max):
-        print("  [!] Skip file: Great Expectations validation failed.")
+    # Fast NumPy validation: no NaNs and at least 95% of values in microvolt bounds
+    if np.isnan(data).any():
+        print("  [!] Skip file: NaN values detected in EEG signal.")
+        win_samples = int(target_hz * win_sec)
+        return np.empty((0, len(best_indices), win_samples)), np.empty((0, len(best_indices), 9)), np.empty((0,))
+        
+    in_range = (data >= amp_min) & (data <= amp_max)
+    if np.mean(in_range) < 0.95:
+        print("  [!] Skip file: Amplitude boundary check failed (less than 95% of values in range).")
         win_samples = int(target_hz * win_sec)
         return np.empty((0, len(best_indices), win_samples)), np.empty((0, len(best_indices), 9)), np.empty((0,))
         
@@ -211,11 +217,19 @@ def main():
     )
     best_indices = [int(idx) for idx in discovery_results["best_indices"]]
     
-    # Dynamically lock selected channels back to config.yaml for serving/inference alignment
-    config["signal_processing"]["best_indices"] = best_indices
-    with open("config.yaml", "w") as f:
-        yaml.safe_dump(config, f)
-    print(f"[*] Dynamically locked selected channels in config.yaml: {best_indices}")
+    # Dynamically lock selected channels back to .run_state.json for serving/inference alignment
+    import json
+    state = {}
+    if os.path.exists(".run_state.json"):
+        try:
+            with open(".run_state.json", "r") as f:
+                state = json.load(f)
+        except Exception:
+            pass
+    state["best_indices"] = best_indices
+    with open(".run_state.json", "w") as f:
+        json.dump(state, f, indent=2)
+    print(f"[*] Dynamically locked selected channels in .run_state.json: {best_indices}")
 
     
     print("\n" + "=" * 60)

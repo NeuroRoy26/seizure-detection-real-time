@@ -5,7 +5,7 @@ import os
 import tempfile
 import codecs
 
-import src.preprocess as preprocessor
+import src.data.preprocess as preprocessor
 
 class TestPreprocessPipeline(unittest.TestCase):
     
@@ -51,11 +51,11 @@ Number of Seizures: 0
         self.assertEqual(y.shape, (1,))
         self.assertEqual(y[0], 1)  # Window spans 0-2s and seizure spans 1-2s, so they overlap
 
-    @patch("src.preprocess.validate_eeg_data", return_value=False)
-    def test_preprocess_and_validate_windows_validation_failed(self, mock_validate):
+    def test_preprocess_and_validate_windows_validation_failed(self):
         raw = MagicMock()
         raw.info = {'sfreq': 256.0}
-        raw.get_data.return_value = np.zeros((10, 512))
+        # Inject NaNs to trigger fast validation check failure
+        raw.get_data.return_value = np.full((10, 512), np.nan)
         
         X_raw, X_eng, y = preprocessor.preprocess_and_validate_windows(
             raw=raw,

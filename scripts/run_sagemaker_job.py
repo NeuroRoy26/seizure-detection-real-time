@@ -9,8 +9,10 @@ and extracts the final latest.onnx model from the SageMaker model artifact.
 =============================================================================
 """
 
-import os
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import io
 
 if sys.platform == "win32":
@@ -255,7 +257,8 @@ def main():
     # Standard TensorFlow DLC image configuration
     # Note: version 2.14.1 with py310 is highly compatible
     tf_estimator = TensorFlow(
-        entry_point='sagemaker_train.py',
+        entry_point='scripts/sagemaker_train.py',
+        source_dir=str(Path(__file__).resolve().parent.parent),
         role=role_arn,
         instance_count=1,
         instance_type=instance_type,

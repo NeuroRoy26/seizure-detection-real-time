@@ -33,9 +33,9 @@ try:
 except ImportError:
     mne = None
 
-from channel_selection import calculate_channel_stability
-from src.validation import validate_eeg_data
-from src.features import extract_eeg_features
+from src.data.channel_selection import calculate_channel_stability
+from src.data.validation import validate_eeg_data
+from src.data.features import extract_eeg_features
 
 warnings.filterwarnings("ignore")
 if mne is not None:
@@ -80,8 +80,15 @@ def process_file_in_spark_worker(edf_path: str, best_indices: list, target_hz: f
         data = data[best_indices, :]  # Select top 10 channels
         data = data * 1e6              # Volts -> Microvolts
         
-        # Great Expectations validation
-        if not validate_eeg_data(data, amp_min, amp_max):
+        # Fast NumPy validation: no NaNs and at least 95% of values in microvolt bounds
+        if np.isnan(data).any():
+            print("  [!] Skip file: NaN values detected in EEG signal.")
+            raw.close()
+            return []
+            
+        in_range = (data >= amp_min) & (data <= amp_max)
+        if np.mean(in_range) < 0.95:
+            print("  [!] Skip file: Amplitude boundary check failed (less than 95% of values in range).")
             raw.close()
             return []
             
@@ -181,11 +188,19 @@ def main():
     )
     best_indices = [int(idx) for idx in discovery_results["best_indices"]]
     
-    # Save stable locked indices to config.yaml
-    config["signal_processing"]["best_indices"] = best_indices
-    with open("config.yaml", "w") as f:
-        yaml.safe_dump(config, f)
-    print(f"[*] Locked channels in config.yaml: {best_indices}")
+    # Save stable locked indices to .run_state.json
+    import json
+    state = {}
+    if os.path.exists(".run_state.json"):
+        try:
+            with open(".run_state.json", "r") as f:
+                state = json.load(f)
+        except Exception:
+            pass
+    state["best_indices"] = best_indices
+    with open(".run_state.json", "w") as f:
+        json.dump(state, f, indent=2)
+    print(f"[*] Locked channels in .run_state.json: {best_indices}")
 
     print("\n" + "=" * 60)
     print("2. ESTABLISHING SPARK CLUSTER SESSION")
@@ -226,8 +241,9 @@ def main():
     # Run maps on partition workers
     def map_partition_func(partition):
         for edf_path, s_times_str in partition:
-            # Parse seizure times list from string
-            s_times = eval(s_times_str)
+            # Parse seizure times list from string safely
+            import ast
+            s_times = ast.literal_eval(s_times_str)
             records = process_file_in_spark_worker(
                 edf_path, best_indices, target_hz, window_sec, amp_min, amp_max, s_times
             )
