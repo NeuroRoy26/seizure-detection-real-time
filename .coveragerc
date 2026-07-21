@@ -5,8 +5,8 @@ omit =
     .venv/*
     start.py
     dashboard.py
-    sagemaker_train.py
-    preprocess_spark.py
-    run_sagemaker_job.py
-    src/train.py
-    src/tune.py
+    scripts/sagemaker_train.py
+    src/data/preprocess_spark.py
+    scripts/run_sagemaker_job.py
+    src/models/train.py
+    src/models/tune.py
