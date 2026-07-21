@@ -268,7 +268,7 @@ def main():
     df.write.mode("overwrite").parquet(parquet_dataset_path)
     
     print("\n=======================================================")
-    print("✅ SPARK PREPROCESSING COMPLETE!")
+    print("[SUCCESS] SPARK PREPROCESSING COMPLETE!")
     print(f"   Feature Store Parquet: {parquet_dataset_path}")
     print("=======================================================")
     

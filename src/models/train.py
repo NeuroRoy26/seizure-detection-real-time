@@ -187,7 +187,7 @@ def train_model(config: dict):
     # Check GPU availability
     gpu_devices = tf.config.list_physical_devices("GPU")
     if len(gpu_devices) > 0:
-        print(f"✅ GPU DETECTED: {gpu_devices[0]}")
+        print(f"[SUCCESS] GPU DETECTED: {gpu_devices[0]}")
         tf.config.experimental.set_memory_growth(gpu_devices[0], True)
     else:
         print("[*] No GPU detected; falling back to CPU.")

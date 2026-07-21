@@ -15,10 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import io
 
-if sys.platform == "win32":
-    # Force UTF-8 encoding on standard output/error to prevent UnicodeEncodeError in Windows terminal
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+# UTF-8 stdout wrapping moved to __main__ block to avoid corrupting test capture systems
 
 import yaml
 import argparse
@@ -281,4 +278,8 @@ def main():
     print("\n[SUCCESS] SageMaker run completed! Model is deployed and saved to S3 folder.")
 
 if __name__ == '__main__':
+    if sys.platform == "win32":
+        import io
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
     main()

@@ -86,13 +86,13 @@ def main() -> None:
 
     print(f"Exporting ONNX: {pt_path} -> {onnx_path}")
     export_onnx(pt_path, onnx_path)
-    print(f"✅ Wrote: {onnx_path}")
+    print(f"[SUCCESS] Wrote: {onnx_path}")
 
     if args.bucket:
         gcs_uri = f"gs://{args.bucket}/{args.object_path}"
         _run(["gcloud", "storage", "cp", str(onnx_path), gcs_uri])
         public_url = f"https://storage.googleapis.com/{args.bucket}/{args.object_path}"
-        print(f"✅ Uploaded: {gcs_uri}")
+        print(f"[SUCCESS] Uploaded: {gcs_uri}")
         print(f"Public URL (MODEL_URL): {public_url}")
 
         if args.make_public:

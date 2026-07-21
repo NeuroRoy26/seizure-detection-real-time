@@ -137,7 +137,8 @@ def main():
         # Print summaries of failures
         for result in validation_result.results:
             if not result.success:
-                print(f"  - Failed: {result.expectation_config.expectation_type} on column {result.expectation_config.kwargs.get('column')}")
+                exp_type = getattr(result.expectation_config, "type", getattr(result.expectation_config, "expectation_type", "Unknown"))
+                print(f"  - Failed: {exp_type} on column {result.expectation_config.kwargs.get('column')}")
         return False
 
 if __name__ == "__main__":

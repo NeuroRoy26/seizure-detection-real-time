@@ -192,7 +192,7 @@ def main():
 
     physical_devices = tf.config.list_physical_devices("GPU")
     if len(physical_devices) > 0:
-        print(f"✅ GPU DETECTED: Utilizing NVIDIA GPU -> {physical_devices[0]}")
+        print(f"[SUCCESS] GPU DETECTED: Utilizing NVIDIA GPU -> {physical_devices[0]}")
         tf.config.experimental.set_memory_growth(physical_devices[0], True)
     else:
         print("[X] WARNING: No GPU detected by TF. TensorFlow will fallback precisely to CPU.")
