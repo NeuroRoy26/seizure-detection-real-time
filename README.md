@@ -75,21 +75,52 @@ python start.py
 * **FastAPI Docs**: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 * **Streamlit Dashboard**: [http://localhost:7860](http://localhost:7860)
 
-### 3. g.tec Unicorn Headset Streamer (BrainFlow)
-To stream live signals from a physical g.tec Unicorn Hybrid Black EEG headset:
+### 3. Universal Headset Streamer (BrainFlow)
+To stream live signals from any physical EEG headset supported by BrainFlow (OpenBCI, Muse, Unicorn, g.tec, etc.):
 ```powershell
 # Install hardware drivers
 pip install brainflow
 
-# Run streamer (specifying your Unicorn's bluetooth serial number)
-python scripts/unicorn_streamer.py --serial UN-2021.05.12 --host 127.0.0.1:8000
+# Run streamer (specifying your board ID, e.g. 13 for Unicorn, 0 for Cyton, 38 for Muse 2)
+python scripts/brainflow_streamer.py --board-id 13 --serial-number UN-2021.05.12 --host 127.0.0.1:8000
 ```
 > [!NOTE]
 > **Hugging Face Cloud Compatibility**: The remote container on Hugging Face Spaces cannot connect directly to your local Bluetooth adapter. However, the client-server design is fully decoupled! You can run this streamer client locally on your Bluetooth-paired computer and direct it to your remote Hugging Face Space by passing your Space URL:
 > ```powershell
-> python scripts/unicorn_streamer.py --serial UN-2021.05.12 --host NeuroRoy26-seizure-detection-real-time.hf.space
+> python scripts/brainflow_streamer.py --board-id 13 --serial-number UN-2021.05.12 --host NeuroRoy26-seizure-detection-real-time.hf.space
 > ```
-> The system automatically handles downsampling the Unicorn's 250Hz signal to 128Hz and padding the 8 EEG channels to the model's expected 10 channels.
+
+---
+
+## 🔌 Hardware Ingestion & Retraining Guidelines
+
+### 1. In-Memory Channel Alignment
+The pre-trained EEGNet model in this repository expects **10 channels** sampled at **128 Hz**. Different EEG headsets offer varying channel configurations. The [scripts/brainflow_streamer.py](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/scripts/brainflow_streamer.py) client automatically handles channel discrepancies:
+* **Truncation ($>10$ channels)**: If your headset has more than 10 channels (e.g., 16-channel OpenBCI Ultracortex), the streamer utilizes only the first 10 active channels.
+* **Padding ($<10$ channels)**: If your headset has fewer than 10 channels (e.g., 8-channel Unicorn or 4-channel Muse), the streamer duplicates the last native channel to pad the stream to the expected 10-channel tensor.
+
+### 2. Retraining the Model for Custom Channel Configs
+If you want the deep learning model to process your headset's exact channel layout natively without padding:
+1. Open [config.yaml](file:///c:/Roy/Code/seizure-detection/seizure-detection-real-time/config.yaml) and modify `top_n_channels` under `signal_processing` to match your headset (e.g., `8` for Unicorn, `4` for Muse):
+   ```yaml
+   signal_processing:
+     top_n_channels: 8
+   ```
+2. Re-run the parallel ETL pipeline to rebuild your database utilizing the selected channels:
+   ```powershell
+   python src/data/preprocess.py
+   ```
+3. Retrain the model on the updated database:
+   ```powershell
+   python src/models/train.py
+   ```
+
+### 🧠 Suggested Optimized Hyperparameters (EEGNet)
+For optimal convergence on custom electrode count configurations, use these hyperparameter configurations:
+* **Learning Rate**: `0.001` (Adam optimizer) is highly stable. If accuracy plates early, adjust to `0.005`.
+* **Batch Size**: `32` (preferred for smaller datasets to add gradient noise) or `64` (for large databases).
+* **Dropout Rate**: `0.25` or `0.30` (crucial to prevent overfitting on low-density channel configs).
+* **EEGNet Filters**: Keep `F1=8` (temporal filters), `D=2` (spatial filters), and `F2=16` (separable filters). This baseline is clinically proven for multi-class rhythmic signals.
 
 ---
 
@@ -104,7 +135,7 @@ python scripts/unicorn_streamer.py --serial UN-2021.05.12 --host 127.0.0.1:8000
 │   ├── local_train_onnx.py         # CLI utility: local MobileNetV2 training script
 │   ├── run_sagemaker_job.py        # CLI utility: AWS SageMaker job orchestrator
 │   ├── sagemaker_train.py          # Container script: SageMaker training entrypoint
-│   └── unicorn_streamer.py         # Hardware script: g.tec Unicorn Bluetooth/BrainFlow streamer
+│   └── brainflow_streamer.py       # Hardware script: Universal EEG Bluetooth/BrainFlow streamer
 ├── src/                            # Core application source code
 │   ├── data/                       # ETL, preprocessing, DSP, and validation gates
 │   │   ├── preprocess.py           # Multiprocess ETL orchestrator
