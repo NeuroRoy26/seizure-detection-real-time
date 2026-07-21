@@ -75,6 +75,22 @@ python start.py
 * **FastAPI Docs**: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 * **Streamlit Dashboard**: [http://localhost:7860](http://localhost:7860)
 
+### 3. g.tec Unicorn Headset Streamer (BrainFlow)
+To stream live signals from a physical g.tec Unicorn Hybrid Black EEG headset:
+```powershell
+# Install hardware drivers
+pip install brainflow
+
+# Run streamer (specifying your Unicorn's bluetooth serial number)
+python scripts/unicorn_streamer.py --serial UN-2021.05.12 --host 127.0.0.1:8000
+```
+> [!NOTE]
+> **Hugging Face Cloud Compatibility**: The remote container on Hugging Face Spaces cannot connect directly to your local Bluetooth adapter. However, the client-server design is fully decoupled! You can run this streamer client locally on your Bluetooth-paired computer and direct it to your remote Hugging Face Space by passing your Space URL:
+> ```powershell
+> python scripts/unicorn_streamer.py --serial UN-2021.05.12 --host NeuroRoy26-seizure-detection-real-time.hf.space
+> ```
+> The system automatically handles downsampling the Unicorn's 250Hz signal to 128Hz and padding the 8 EEG channels to the model's expected 10 channels.
+
 ---
 
 ## 📁 Codebase Structure
@@ -87,7 +103,8 @@ python start.py
 │   ├── build_local_database.py     # CLI utility: local ETL script for database extraction
 │   ├── local_train_onnx.py         # CLI utility: local MobileNetV2 training script
 │   ├── run_sagemaker_job.py        # CLI utility: AWS SageMaker job orchestrator
-│   └── sagemaker_train.py          # Container script: SageMaker training entrypoint
+│   ├── sagemaker_train.py          # Container script: SageMaker training entrypoint
+│   └── unicorn_streamer.py         # Hardware script: g.tec Unicorn Bluetooth/BrainFlow streamer
 ├── src/                            # Core application source code
 │   ├── data/                       # ETL, preprocessing, DSP, and validation gates
 │   │   ├── preprocess.py           # Multiprocess ETL orchestrator

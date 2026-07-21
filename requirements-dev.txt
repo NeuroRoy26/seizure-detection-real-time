@@ -11,3 +11,4 @@ tensorflow
 mlflow
 tf2onnx
 boto3
+brainflow
