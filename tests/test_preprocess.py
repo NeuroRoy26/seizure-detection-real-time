@@ -24,7 +24,7 @@ Number of Seizures: 0
             self.assertEqual(data.get("chb01_01.edf"), [(2996, 3036)])
             self.assertEqual(data.get("chb01_02.edf"), [])
 
-    @patch("src.preprocess.validate_eeg_data", return_value=True)
+    @patch("src.data.preprocess.validate_eeg_data", return_value=True)
     def test_preprocess_and_validate_windows_success(self, mock_validate):
         # Create a mock raw object
         raw = MagicMock()
@@ -88,7 +88,7 @@ Number of Seizures: 0
         with self.assertRaises(FileNotFoundError):
             preprocessor._load_config("non_existent_config_path_xyz.yaml")
 
-    @patch("src.preprocess._load_config")
+    @patch("src.data.preprocess._load_config")
     @patch("glob.glob", return_value=[])
     def test_main_no_edfs(self, mock_glob, mock_load):
         mock_load.return_value = {
@@ -109,10 +109,10 @@ Number of Seizures: 0
         # This should print "No EDFs found" and return cleanly
         preprocessor.main()
 
-    @patch("src.preprocess._load_config")
+    @patch("src.data.preprocess._load_config")
     @patch("glob.glob")
     @patch("mne.io.read_raw_edf", create=True)
-    @patch("src.preprocess.calculate_channel_stability")
+    @patch("src.data.preprocess.calculate_channel_stability")
     @patch("builtins.open", new_callable=mock_open)
     def test_main_success(self, mock_open_file, mock_stability, mock_read, mock_glob, mock_load):
         mock_load.return_value = {

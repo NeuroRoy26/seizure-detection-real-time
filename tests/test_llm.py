@@ -18,7 +18,7 @@ class TestLLMClient(unittest.TestCase):
                 "api_url": "https://api-inference.huggingface.co/models"
             }
         }
-        self.patcher = patch("src.rag_retriever.RAGRetriever.retrieve_literature", return_value=[])
+        self.patcher = patch("src.serving.rag_retriever.RAGRetriever.retrieve_literature", return_value=[])
         self.mock_retrieve = self.patcher.start()
 
     def tearDown(self):
@@ -238,7 +238,7 @@ class TestFastAPILLMEndpoints(unittest.TestCase):
         api.llm_client.enabled = True
         api.llm_client.hf_token = "fake-token"
         self.client = TestClient(api.app)
-        self.patcher = patch("src.rag_retriever.RAGRetriever.retrieve_literature", return_value=[])
+        self.patcher = patch("src.serving.rag_retriever.RAGRetriever.retrieve_literature", return_value=[])
         self.mock_retrieve = self.patcher.start()
 
     def tearDown(self):
@@ -310,16 +310,16 @@ llm:
     def test_load_config(self, mock_exists):
         # Setup mock_exists to return True for our fake config path
         mock_exists.side_effect = lambda p: p in [self.temp_config_path, "fake/path/pubmed_api.py"]
-        from src.rag_retriever import RAGRetriever
+        from src.serving.rag_retriever import RAGRetriever
         retriever = RAGRetriever(self.temp_config_path)
         self.assertTrue(retriever.enabled)
         self.assertEqual(retriever.num_articles, 2)
         self.assertEqual(retriever.pubmed_script_path, "fake/path/pubmed_api.py")
 
-    @patch("src.rag_retriever.RAGRetriever._run_pubmed_api")
+    @patch("src.serving.rag_retriever.RAGRetriever._run_pubmed_api")
     @patch("os.path.exists", return_value=True)
     def test_retrieve_literature_success(self, mock_exists, mock_run):
-        from src.rag_retriever import RAGRetriever
+        from src.serving.rag_retriever import RAGRetriever
         retriever = RAGRetriever(self.temp_config_path)
         
         # Mock search_pubmed to return PMIDs
@@ -351,10 +351,10 @@ llm:
         self.assertEqual(articles[0]["title"], "EEG Analysis")
         self.assertEqual(articles[1]["title"], "Seizure Classification")
 
-    @patch("src.rag_retriever.RAGRetriever._run_pubmed_api", return_value=None)
+    @patch("src.serving.rag_retriever.RAGRetriever._run_pubmed_api", return_value=None)
     @patch("os.path.exists", return_value=True)
     def test_retrieve_literature_failure(self, mock_exists, mock_run):
-        from src.rag_retriever import RAGRetriever
+        from src.serving.rag_retriever import RAGRetriever
         retriever = RAGRetriever(self.temp_config_path)
         articles = retriever.retrieve_literature(0.1, "normal")
         self.assertEqual(len(articles), 0)
@@ -378,7 +378,7 @@ llm:
         if os.path.exists(self.temp_config_path):
             os.remove(self.temp_config_path)
 
-    @patch("src.rag_retriever.RAGRetriever._run_pubmed_api")
+    @patch("src.serving.rag_retriever.RAGRetriever._run_pubmed_api")
     @patch("requests.post")
     @patch("os.path.exists", return_value=True)
     def test_generate_report_with_rag(self, mock_exists, mock_post, mock_run):

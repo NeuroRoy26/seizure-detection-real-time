@@ -306,7 +306,7 @@ def main():
 
             
     print("\n=======================================================")
-    print("✅ PREPROCESSING & FEATURE STORE POPULATION COMPLETE!")
+    print("[SUCCESS] PREPROCESSING & FEATURE STORE POPULATION COMPLETE!")
     shapes = store.get_dataset_shapes()
     print(f"   Raw Signals Shape : {shapes.get('raw_signals_X')}")
     print(f"   Features Shape    : {shapes.get('engineered_features_X')}")

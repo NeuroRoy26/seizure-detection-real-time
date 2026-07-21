@@ -10,7 +10,7 @@ from pathlib import Path
 pyspark = pytest.importorskip("pyspark", reason="pyspark is not installed")
 from pyspark.sql import SparkSession
 
-import src.preprocess_spark as spark_preprocessor
+import src.data.preprocess_spark as spark_preprocessor
 
 def test_parse_seizure_summary(tmp_path):
     summary_file = tmp_path / "chb01-summary.txt"
@@ -26,7 +26,7 @@ def test_parse_seizure_summary(tmp_path):
     assert "chb01_01.edf" in seizure_map
     assert seizure_map["chb01_01.edf"] == [(10, 20)]
 
-@patch("src.preprocess_spark.validate_eeg_data")
+@patch("src.data.preprocess_spark.validate_eeg_data")
 def test_process_file_in_spark_worker(mock_validate, tmp_path, monkeypatch):
     mne = pytest.importorskip("mne", reason="mne is not installed")
     
