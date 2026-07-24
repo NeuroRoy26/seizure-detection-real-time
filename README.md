@@ -1,6 +1,6 @@
 ---
 # Hugging Face Space Metadata (Required for live deployment on Spaces)
-title: Live inference Time=Series Data Classification for Seizure Detection
+title: Live inference Time-Series Data Classification for Seizure Detection
 emoji: 🧠
 colorFrom: blue
 colorTo: indigo
@@ -9,7 +9,7 @@ app_port: 7860
 pinned: false
 ---
 
-# ML-Driven Real-Time EEG Classification for Seizure Detection
+# Live inference Time-Series Data Classification for Seizure Detection
 
 [![CI](https://github.com/NeuroRoy26/seizure-detection-real-time/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/NeuroRoy26/seizure-detection-real-time/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/github/NeuroRoy26/seizure-detection-real-time/graph/badge.svg?token=KIM3PCNSMP)](https://codecov.io/github/NeuroRoy26/seizure-detection-real-time)
