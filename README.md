@@ -1,6 +1,6 @@
 ---
 # Hugging Face Space Metadata (Required for live deployment on Spaces)
-title: ML-Driven Real-Time EEG Classification for Seizure Detection
+title: Live inference Time=Series Data Classification for Seizure Detection
 emoji: 🧠
 colorFrom: blue
 colorTo: indigo
